@@ -1,38 +1,55 @@
 # climbing-go
 
-Betly 攀岩 CLI，当前聚焦公开门店查询和 Agent 可复用的最小 skill。
+Betly 攀岩 CLI，提供公开门店查询能力，并为 AI Agent 提供可直接复用的 skill。
 
-## 开发
+已支持通过 MCP 查询公开门店列表与详情。
+
+## Install
+
+```bash
+npm install -g climbing-go
+climbing-go --help
+```
+
+## Skill
+
+仓库内提供 skill 入口：
+
+`skills/betly-store/SKILL.md`
+
+使用前先确保 `climbing-go` 已安装，并且当前终端可以直接执行该命令。
+
+Skill 默认通过 CLI 调用能力，不直接绕过 CLI 请求底层 MCP。
+
+## Commands
+
+```bash
+climbing-go store list
+climbing-go store list --city 上海 --search 香蕉 --limit 10
+climbing-go store get store_123
+```
+
+## Output
+
+- 所有成功结果都返回 JSON
+- `store list` 重点查看 `data.stores` 和 `data.count`
+- `store get` 重点查看 `data.store`
+- 响应包含 `ok`、`tool`、`endpoint` 和 `data`
+
+## Scope
+
+- 公开门店列表查询
+- 公开门店详情查询
+- 当前不包含课程、会员、订单和其他私有能力
+
+## Development
 
 ```bash
 pnpm install
 pnpm test
 pnpm build
-```
-
-## 用法
-
-```bash
 pnpm exec tsx src/index.ts --help
-pnpm exec tsx src/index.ts store list
-pnpm exec tsx src/index.ts store get store_123
 ```
-
-## Skill
-
-仓库内提供了最小可用的 AI skill：`skills/betly-store/SKILL.md`。
-
-之后就可以让 agent 复用下面这组最小示例：
-
-```bash
-climbing-go store list --city 上海
-climbing-go store get store_123
-```
-
-## 当前状态
-
-- 已支持通过 MCP 查询公开门店列表与详情
-- 已提供最小可用 skill，可在 AI Agent 场景中复用门店查询能力
 
 ## Release
 
@@ -40,12 +57,9 @@ climbing-go store get store_123
 
 - 发布触发：推送到 `main` 或手动触发 `release-climbing-go` workflow
 - 发布前检查：固定校验 git 身份为 `betlysaas <betly@mx5.cn>`，并校验 npm 登录身份
-- 需要的仓库配置：
-  - `NPM_TOKEN`：对应 `betly@mx5.cn` 账号的 npm automation token
-  - `NPM_EXPECTED_USER`：npm 发布用户名，默认 `betlysaas`
-  - `RELEASE_MCP_ENDPOINT`：发布后 smoke test 使用的 MCP 地址
+- 需要的仓库配置：`NPM_TOKEN`、`NPM_EXPECTED_USER`、`RELEASE_MCP_ENDPOINT`
 
-本地可先执行：
+发布前可先执行：
 
 ```bash
 pnpm release:verify
