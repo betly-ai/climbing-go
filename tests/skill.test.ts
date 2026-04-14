@@ -15,6 +15,12 @@ describe('skill package', () => {
 
     expect(skill).toContain('name: betly-store');
     expect(skill).toContain('description: Use when');
+    expect(skill).toContain('找岩馆');
+    expect(skill).toContain('哪里攀岩');
+    expect(skill).toContain('几点开门');
+    expect(skill).toContain('find a climbing gym');
+    expect(skill).toContain('what time does it open');
+    expect(skill).toContain('先用 `store list` 缩小范围，再用 `store get` 看详情');
     expect(skill).toContain('climbing-go store list');
     expect(skill).toContain('climbing-go store get');
     expect(skill).not.toContain('climbing-go config set endpoint <url>');
