@@ -26,11 +26,28 @@ pnpm exec tsx src/index.ts store get store_123
 CLIMBING_MCP_ENDPOINT=https://mcp.example.com pnpm exec tsx src/index.ts store list
 ```
 
+## Skill
+
+仓库内提供了最小可用的 AI skill：`skills/betly-store/SKILL.md`。
+
+推荐先配置一次 MCP endpoint：
+
+```bash
+climbing-go config set endpoint https://mcp.example.com
+```
+
+之后就可以让 agent 复用下面这组最小示例：
+
+```bash
+climbing-go store list --city 上海
+climbing-go store get store_123
+```
+
 ## 当前状态
 
-- 已提供 `store list` / `store get` 命令骨架
+- 已支持通过 MCP 查询公开门店列表与详情
 - 已支持本地持久化配置攀岩 MCP endpoint
-- 当前 `store` 命令输出的是待接入 MCP 的占位结果，后续可直接替换为真实 MCP 调用
+- 已提供最小可用 skill，可在 AI Agent 场景中复用门店查询能力
 
 ## Release
 
