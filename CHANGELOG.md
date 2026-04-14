@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/betly-ai/climbing-go/compare/v1.0.0...v1.0.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* **cli:** package dist entry cleanly and simplify default store docs ([#9](https://github.com/betly-ai/climbing-go/issues/9)) ([a69ffef](https://github.com/betly-ai/climbing-go/commit/a69ffef6b11fe2bf3abdb329daffd4460b9d7e21))
+
 # 1.0.0 (2026-04-14)
 
 
