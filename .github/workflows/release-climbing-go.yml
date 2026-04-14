@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
   issues: write
   pull-requests: write
 
@@ -22,7 +23,6 @@ jobs:
       EXPECTED_NPM_USER_NAME: ${{ vars.NPM_EXPECTED_USER != '' && vars.NPM_EXPECTED_USER || 'betlysaas' }}
       RELEASE_MCP_ENDPOINT: ${{ vars.RELEASE_MCP_ENDPOINT != '' && vars.RELEASE_MCP_ENDPOINT || 'https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run' }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     steps:
       - name: Checkout
@@ -38,7 +38,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
