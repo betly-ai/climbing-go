@@ -77,6 +77,7 @@ jobs:
           CLIMBING_MCP_ENDPOINT: ${{ env.RELEASE_MCP_ENDPOINT }}
         run: |
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          BIN_NAME="$(node -p "Object.keys(require('./package.json').bin ?? {})[0] || require('./package.json').name")"
           RELEASED_VERSION="$(npm view "$PACKAGE_NAME" version)"
-          npx -y "${PACKAGE_NAME}@${RELEASED_VERSION}" --help
-          npx -y "${PACKAGE_NAME}@${RELEASED_VERSION}" store list --limit 1
+          npm exec --yes --package "${PACKAGE_NAME}@${RELEASED_VERSION}" -- "$BIN_NAME" --help
+          npm exec --yes --package "${PACKAGE_NAME}@${RELEASED_VERSION}" -- "$BIN_NAME" store list --limit 1
