@@ -20,7 +20,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "release": "semantic-release",

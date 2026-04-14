@@ -44,4 +44,18 @@ describe('endpoint resolution', () => {
     expect(envEndpoint).toBe('https://env.example.com');
     expect(configEndpoint).toBe('https://config.example.com');
   });
+
+  it('falls back to the default climbing MCP endpoint when no override is set', async () => {
+    const endpointModule = await importEndpointModule();
+    const resolveEndpoint = endpointModule?.resolveEndpoint;
+
+    const defaultEndpoint =
+      typeof resolveEndpoint === 'function'
+        ? resolveEndpoint({
+            env: {}
+          })
+        : null;
+
+    expect(defaultEndpoint).toBe('https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run');
+  });
 });

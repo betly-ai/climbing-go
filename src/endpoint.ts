@@ -1,5 +1,8 @@
 import type { EnvMap } from './config.js';
 
+export const DEFAULT_CLIMBING_MCP_ENDPOINT =
+  'https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run';
+
 export interface ResolveEndpointInput {
   cliEndpoint?: string;
   configEndpoint?: string;
@@ -22,5 +25,5 @@ export function resolveEndpoint(input: ResolveEndpointInput) {
     return configEndpoint;
   }
 
-  return null;
+  return DEFAULT_CLIMBING_MCP_ENDPOINT;
 }

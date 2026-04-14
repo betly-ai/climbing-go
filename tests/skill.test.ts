@@ -10,15 +10,15 @@ async function readRepoFile(relativePath: string) {
 }
 
 describe('skill package', () => {
-  it('ships a public store skill with endpoint setup and list/get examples', async () => {
+  it('ships a public store skill with direct list/get examples', async () => {
     const skill = await readRepoFile('skills/betly-store/SKILL.md');
 
     expect(skill).toContain('name: betly-store');
     expect(skill).toContain('description: Use when');
     expect(skill).toContain('climbing-go store list');
     expect(skill).toContain('climbing-go store get');
-    expect(skill).toContain('climbing-go config set endpoint <url>');
-    expect(skill).toContain('CLIMBING_MCP_ENDPOINT');
+    expect(skill).not.toContain('climbing-go config set endpoint <url>');
+    expect(skill).not.toContain('CLIMBING_MCP_ENDPOINT');
   });
 
   it('publishes the skill files in the npm package', async () => {
@@ -34,8 +34,8 @@ describe('skill package', () => {
 
     expect(readme).toContain('## Skill');
     expect(readme).toContain('skills/betly-store/SKILL.md');
-    expect(readme).toContain('climbing-go config set endpoint https://mcp.example.com');
     expect(readme).toContain('climbing-go store list --city 上海');
     expect(readme).toContain('已支持通过 MCP 查询公开门店列表与详情');
+    expect(readme).not.toContain('config set endpoint https://mcp.example.com');
   });
 });

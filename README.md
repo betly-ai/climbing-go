@@ -1,6 +1,6 @@
 # climbing-go
 
-Betly 攀岩 CLI 一期骨架，当前聚焦公开门店查询命令与 MCP endpoint 配置。
+Betly 攀岩 CLI，当前聚焦公开门店查询和 Agent 可复用的最小 skill。
 
 ## 开发
 
@@ -14,27 +14,13 @@ pnpm build
 
 ```bash
 pnpm exec tsx src/index.ts --help
-pnpm exec tsx src/index.ts config set endpoint https://mcp.example.com
-pnpm exec tsx src/index.ts config get endpoint
 pnpm exec tsx src/index.ts store list
 pnpm exec tsx src/index.ts store get store_123
-```
-
-也可以通过环境变量覆盖 endpoint：
-
-```bash
-CLIMBING_MCP_ENDPOINT=https://mcp.example.com pnpm exec tsx src/index.ts store list
 ```
 
 ## Skill
 
 仓库内提供了最小可用的 AI skill：`skills/betly-store/SKILL.md`。
-
-推荐先配置一次 MCP endpoint：
-
-```bash
-climbing-go config set endpoint https://mcp.example.com
-```
 
 之后就可以让 agent 复用下面这组最小示例：
 
@@ -46,7 +32,6 @@ climbing-go store get store_123
 ## 当前状态
 
 - 已支持通过 MCP 查询公开门店列表与详情
-- 已支持本地持久化配置攀岩 MCP endpoint
 - 已提供最小可用 skill，可在 AI Agent 场景中复用门店查询能力
 
 ## Release
