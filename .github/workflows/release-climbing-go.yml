@@ -1,0 +1,85 @@
+name: Release climbing-go
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: release-climbing-go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_GIT_USER_NAME: betlysaas
+      EXPECTED_GIT_USER_EMAIL: betly@mx5.cn
+      EXPECTED_NPM_USER_NAME: ${{ vars.NPM_EXPECTED_USER != '' && vars.NPM_EXPECTED_USER || 'betlysaas' }}
+      RELEASE_MCP_ENDPOINT: ${{ vars.RELEASE_MCP_ENDPOINT != '' && vars.RELEASE_MCP_ENDPOINT || 'https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run' }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build CLI
+        run: pnpm build
+
+      - name: Configure release git identity
+        run: |
+          git config user.name "$EXPECTED_GIT_USER_NAME"
+          git config user.email "$EXPECTED_GIT_USER_EMAIL"
+
+      - name: Verify release readiness
+        run: node scripts/verify-release-readiness.mjs
+
+      - name: Publish with semantic-release
+        run: pnpm exec semantic-release
+
+      - name: Wait for npm package availability
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          for _ in 1 2 3 4 5 6; do
+            if npm view "$PACKAGE_NAME" version >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Package $PACKAGE_NAME is not available on npm yet"
+          exit 1
+
+      - name: Smoke test published CLI
+        env:
+          CLIMBING_MCP_ENDPOINT: ${{ env.RELEASE_MCP_ENDPOINT }}
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          RELEASED_VERSION="$(npm view "$PACKAGE_NAME" version)"
+          npx -y "${PACKAGE_NAME}@${RELEASED_VERSION}" --help
+          npx -y "${PACKAGE_NAME}@${RELEASED_VERSION}" store list --limit 1
