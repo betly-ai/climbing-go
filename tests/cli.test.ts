@@ -37,12 +37,57 @@ describe('CLI skeleton', () => {
     const result =
       typeof runCli === 'function'
         ? await runCli(['store', 'list'], {
-            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' }
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                return {
+                  ok: true,
+                  tool: 'listStores',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    stores: [{ id: 'store-1', name: '香蕉攀岩' }],
+                    count: 1
+                  }
+                };
+              },
+              async getStore() {
+                throw new Error('unused');
+              }
+            })
           })
         : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('"command": "store.list"');
-    expect(result.stdout).toContain('"endpoint": "https://env.example.com"');
+    expect(result.stdout).toContain('"ok": true');
+    expect(result.stdout).toContain('"tool": "listStores"');
+    expect(result.stdout).toContain('"endpoint": "https://env.example.com/api/climbing/mcp"');
+    expect(result.stdout).toContain('"name": "香蕉攀岩"');
+  });
+
+  it('prints structured errors for store get failures', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'get', 'missing-store'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                const error = new Error('Store not found');
+                Object.assign(error, { code: 'not_found', endpoint: 'https://env.example.com/api/climbing/mcp' });
+                throw error;
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('"ok": false');
+    expect(result.stderr).toContain('"code": "not_found"');
+    expect(result.stderr).toContain('"message": "Store not found"');
   });
 });
