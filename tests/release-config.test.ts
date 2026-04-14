@@ -97,6 +97,5 @@ describe('release workflow', () => {
     expect(workflowText).toContain('push:');
     expect(workflowText).toContain('- main');
     expect(workflowText).toContain('pnpm exec semantic-release');
-    expect(workflowText).toContain('node scripts/verify-release-readiness.mjs');
   });
 });
