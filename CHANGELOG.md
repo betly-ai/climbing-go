@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/betly-ai/climbing-go/compare/v1.0.1...v1.1.0) (2026-04-15)
+
+
+### Features
+
+* **mcp:** add stdio server entrypoints for local MCP clients in climbing-go ([#19](https://github.com/betly-ai/climbing-go/issues/19)) ([b35eaaf](https://github.com/betly-ai/climbing-go/commit/b35eaafc9e8c0251e8d576aa73a840edf48ab664))
+
 ## [1.0.1](https://github.com/betly-ai/climbing-go/compare/v1.0.0...v1.0.1) (2026-04-14)
 
 
