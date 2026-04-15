@@ -2,6 +2,7 @@ import { Command, CommanderError } from 'commander';
 
 import { getConfigPath, loadConfig, saveConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
+import { CLIMBING_GO_VERSION } from './version.js';
 import { createStoreGateway, StoreGatewayError, type StoreGateway } from './store-gateway.js';
 
 export interface RunCliOptions {
@@ -90,7 +91,7 @@ export function createProgram(options: RunCliOptions = {}) {
   program
     .name('climbing-go')
     .description('CLI skeleton for Betly climbing MCP integrations')
-    .version('0.1.0');
+    .version(CLIMBING_GO_VERSION);
 
   const configCommand = program.command('config').description('Manage local CLI configuration');
 
@@ -121,6 +122,14 @@ export function createProgram(options: RunCliOptions = {}) {
     });
 
   const storeCommand = program.command('store').description('Query public climbing stores');
+
+  program
+    .command('mcp-serve')
+    .alias('serve')
+    .description('Run the local MCP server over stdio')
+    .action(() => {
+      throw new Error('The MCP server must be started from the climbing-go process entrypoint.');
+    });
 
   storeCommand
     .command('list')

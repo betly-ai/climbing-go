@@ -16,6 +16,7 @@ describe('CLI skeleton', () => {
 
     expect(helpText).toContain('store');
     expect(helpText).toContain('config');
+    expect(helpText).toContain('mcp-serve');
   });
 
   it('shows store subcommands in help output', async () => {

@@ -95,6 +95,49 @@ skill 文件位置：
 
 装好以后，Agent 会优先通过 `climbing-go` 命令查门店，而不是直接绕过 CLI 去请求底层 MCP。
 
+## 作为 MCP Server 使用
+
+从 `v1.0.1` 开始，这个包既可以当 CLI 用，也可以直接作为本地 stdio MCP Server 启动。
+
+可用启动方式：
+
+```bash
+climbing-go mcp-serve
+climbing-go --mcp
+climbing-go-mcp
+```
+
+如果你要在任意支持 stdio 的 MCP client 里配置本地服务，可以使用下面任一命令：
+
+```json
+{
+  "mcpServers": {
+    "climbing-go": {
+      "command": "npx",
+      "args": ["-y", "climbing-go", "mcp-serve"]
+    }
+  }
+}
+```
+
+或者：
+
+```json
+{
+  "mcpServers": {
+    "climbing-go": {
+      "command": "npx",
+      "args": ["-y", "climbing-go-mcp"]
+    }
+  }
+}
+```
+
+启动后会通过 stdio 暴露两个 MCP tools：
+
+- `listStores`
+- `getStore`
+
 ## 如果你想自己开发
 
 ```bash

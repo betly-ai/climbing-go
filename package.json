@@ -12,7 +12,8 @@
   },
   "homepage": "https://github.com/betly-ai/climbing-go#readme",
   "bin": {
-    "climbing-go": "./dist/index.js"
+    "climbing-go": "./dist/index.js",
+    "climbing-go-mcp": "./dist/mcp-server-bin.js"
   },
   "files": [
     "dist",
@@ -33,15 +34,17 @@
     "access": "public"
   },
   "dependencies": {
-    "commander": "^14.0.1"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^14.0.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^11.0.6",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.0",
-    "@semantic-release/commit-analyzer": "^13.0.1",
     "@types/node": "^24.6.0",
     "semantic-release": "^25.0.3",
     "tsx": "^4.20.6",

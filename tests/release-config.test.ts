@@ -99,13 +99,14 @@ describe('release workflow', () => {
     expect(workflowText).toContain('pnpm exec semantic-release');
   });
 
-  it('publishes a bin entry that points to the built CLI entry file', async () => {
+  it('publishes CLI and MCP bin entries that point to built entry files', async () => {
     const packageJsonPath = path.join(process.cwd(), 'package.json');
     const packageJsonText = await readFile(packageJsonPath, 'utf8').catch(() => '');
     const packageJson = packageJsonText ? JSON.parse(packageJsonText) : {};
 
     expect(packageJson.bin).toEqual({
-      'climbing-go': './dist/index.js'
+      'climbing-go': './dist/index.js',
+      'climbing-go-mcp': './dist/mcp-server-bin.js'
     });
   });
 });
