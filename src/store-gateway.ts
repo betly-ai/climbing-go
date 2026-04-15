@@ -67,6 +67,7 @@ interface JsonRpcSuccess {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_STORE_LIST_LIMIT = 100;
 
 function normalizeEndpoint(endpoint: string) {
   const url = new URL(endpoint);
@@ -214,10 +215,15 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
 
   return {
     async listStores(args: ListStoresArgs = {}) {
+      const requestArgs =
+        args.limit === undefined
+          ? { ...args, limit: DEFAULT_STORE_LIST_LIMIT }
+          : args;
+
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'listStores',
-        args,
+        args: requestArgs,
         fetchImpl,
         timeoutMs
       });

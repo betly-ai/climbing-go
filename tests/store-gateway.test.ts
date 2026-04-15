@@ -5,6 +5,67 @@ async function importStoreGatewayModule() {
 }
 
 describe('store gateway', () => {
+  it('requests a large default limit when no limit is provided', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedLimit: number | undefined;
+
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          arguments?: {
+            limit?: number;
+          };
+        };
+      };
+      requestedLimit = body.params?.arguments?.limit;
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  stores: Array.from({ length: 23 }, (_, index) => ({
+                    id: `store-${index + 1}`,
+                    name: `门店${index + 1}`
+                  })),
+                  count: 23
+                })
+              }
+            ]
+          }
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+    };
+
+    const result =
+      typeof createStoreGateway === 'function'
+        ? await createStoreGateway('https://example.com', { fetch: fetchMock }).listStores()
+        : null;
+
+    expect(result).toEqual({
+      ok: true,
+      tool: 'listStores',
+      endpoint: 'https://example.com/api/climbing/mcp',
+      data: {
+        stores: Array.from({ length: 23 }, (_, index) => ({
+          id: `store-${index + 1}`,
+          name: `门店${index + 1}`
+        })),
+        count: 23
+      }
+    });
+    expect(requestedLimit).toBe(100);
+  });
+
   it('parses listStores MCP content into structured list data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;

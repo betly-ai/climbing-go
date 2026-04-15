@@ -63,10 +63,12 @@ pnpm exec tsx src/index.ts --help
 
 ```bash
 climbing-go store list
-climbing-go store list --city 上海
+climbing-go store list --city 上海 --search 香蕉
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get store_123
 ```
+
+`store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时才走分页。
 
 ## Query Strategy
 

@@ -46,8 +46,12 @@ climbing-go --help
 
 ```bash
 climbing-go store list
+climbing-go store list --city 上海 --search 香蕉
+climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 ```
+
+`store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时会按传入分页参数返回。
 
 ## 你可以用它做什么
 
