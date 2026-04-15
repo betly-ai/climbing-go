@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/betly-ai/climbing-go/compare/v1.1.0...v1.2.0) (2026-04-15)
+
+
+### Features
+
+* **store:** raise default store list limit to 100 for public store queries ([#20](https://github.com/betly-ai/climbing-go/issues/20)) ([a310528](https://github.com/betly-ai/climbing-go/commit/a3105282faf6e303e9223cfc79b508e30a9dbeae))
+
 # [1.1.0](https://github.com/betly-ai/climbing-go/compare/v1.0.1...v1.1.0) (2026-04-15)
 
 
