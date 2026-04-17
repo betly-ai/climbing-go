@@ -1,3 +1,13 @@
+## [1.2.1](https://github.com/betly-ai/climbing-go/compare/v1.2.0...v1.2.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* **security:** 加固 endpoint 配置，防止 SSRF 与凭据泄露 ([#1](https://github.com/betly-ai/climbing-go/issues/1)) ([e2796d4](https://github.com/betly-ai/climbing-go/commit/e2796d47d6a20db7117d653c3bd07106c788f450))
+* **发布工作流:** 收紧权限并修复 hono 漏洞依赖 ([#2](https://github.com/betly-ai/climbing-go/issues/2)) ([41b0474](https://github.com/betly-ai/climbing-go/commit/41b04743f7be311c85ea1f391e226efc042c748c))
+* **安全审计:** 完整修复 climbing-go 剩余安全与发布风险 ([#4](https://github.com/betly-ai/climbing-go/issues/4)) ([6c98d32](https://github.com/betly-ai/climbing-go/commit/6c98d329af04e86d908e6c8c388a17c4576f64ba))
+* **安全校验:** 补齐远端响应、分页参数和本地配置的安全校验 ([#3](https://github.com/betly-ai/climbing-go/issues/3)) ([0af0ab4](https://github.com/betly-ai/climbing-go/commit/0af0ab42addc61944bd3cfb24f7e4c613ae24e26))
+
 # [1.2.0](https://github.com/betly-ai/climbing-go/compare/v1.1.0...v1.2.0) (2026-04-15)
 
 
