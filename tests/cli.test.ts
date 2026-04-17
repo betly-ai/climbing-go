@@ -89,6 +89,65 @@ describe('CLI skeleton', () => {
     expect(result.stderr).toContain('only http: and https: are allowed');
   });
 
+  it('rejects insecure http endpoints without --insecure', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'list', '--endpoint', 'http://example.com'], {
+            env: {},
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('should not be called');
+              },
+              async getStore() {
+                throw new Error('should not be called');
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--insecure');
+  });
+
+  it('allows insecure http endpoints with --insecure', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let allowInsecure: boolean | undefined;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'list', '--endpoint', 'http://example.com', '--insecure'], {
+            env: {},
+            gatewayFactory: (_endpoint, options) => {
+              allowInsecure = options?.allowInsecure;
+              return {
+                async listStores() {
+                  return {
+                    ok: true,
+                    tool: 'listStores',
+                    endpoint: 'http://example.com/api/climbing/mcp',
+                    data: {
+                      stores: [],
+                      count: 0
+                    }
+                  };
+                },
+                async getStore() {
+                  throw new Error('unused');
+                }
+              };
+            }
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(allowInsecure).toBe(true);
+    expect(result.stdout).toContain('"endpoint": "http://example.com/api/climbing/mcp"');
+  });
+
   it('sanitizes endpoint in error output', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;

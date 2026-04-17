@@ -15,12 +15,17 @@ describe('endpoint validation', () => {
     ).not.toThrow();
   });
 
-  it('accepts http: endpoints', async () => {
+  it('rejects http: endpoints unless allowInsecure is enabled', async () => {
     const mod = await importEndpointModule();
     const validateEndpoint = mod?.validateEndpoint;
 
     expect(typeof validateEndpoint === 'function'
       ? () => validateEndpoint('http://example.com')
+      : null
+    ).toThrow(/--insecure/);
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('http://example.com', { allowInsecure: true })
       : null
     ).not.toThrow();
   });

@@ -5,6 +5,10 @@ export const DEFAULT_CLIMBING_MCP_ENDPOINT =
 
 const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
 
+export interface ValidateEndpointOptions {
+  allowInsecure?: boolean;
+}
+
 export class EndpointValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -14,9 +18,10 @@ export class EndpointValidationError extends Error {
 
 /**
  * Validate that an endpoint URL uses only http: or https: scheme.
- * Throws EndpointValidationError for invalid URLs or disallowed schemes.
+ * Throws EndpointValidationError for invalid URLs, disallowed schemes, or
+ * insecure http: endpoints when allowInsecure is not explicitly enabled.
  */
-export function validateEndpoint(endpoint: string): URL {
+export function validateEndpoint(endpoint: string, options: ValidateEndpointOptions = {}): URL {
   let url: URL;
   try {
     url = new URL(endpoint);
@@ -29,6 +34,12 @@ export function validateEndpoint(endpoint: string): URL {
   if (!ALLOWED_SCHEMES.has(url.protocol)) {
     throw new EndpointValidationError(
       `Unsupported endpoint scheme "${url.protocol}" — only http: and https: are allowed`
+    );
+  }
+
+  if (url.protocol === 'http:' && !options.allowInsecure) {
+    throw new EndpointValidationError(
+      'Insecure http: endpoints require the explicit --insecure flag'
     );
   }
 

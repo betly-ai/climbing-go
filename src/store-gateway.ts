@@ -37,6 +37,7 @@ export interface StoreGateway {
 export interface StoreGatewayOptions {
   fetch?: typeof fetch;
   timeoutMs?: number;
+  allowInsecure?: boolean;
 }
 
 export class StoreGatewayError extends Error {
@@ -72,8 +73,8 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
 const MAX_ERROR_BODY_LENGTH = 512;
 
-function normalizeEndpoint(endpoint: string) {
-  const url = validateEndpoint(endpoint);
+function normalizeEndpoint(endpoint: string, allowInsecure = false) {
+  const url = validateEndpoint(endpoint, { allowInsecure });
 
   if (url.protocol === 'http:') {
     process.stderr.write(
@@ -244,7 +245,7 @@ async function callTool(
 }
 
 export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): StoreGateway {
-  const normalizedEndpoint = normalizeEndpoint(endpoint);
+  const normalizedEndpoint = normalizeEndpoint(endpoint, options.allowInsecure);
   const fetchImpl = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -284,6 +285,15 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       }
 
       const record = data as Record<string, unknown>;
+
+      if ('stores' in record && !Array.isArray(record.stores)) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listStores response field "stores" must be an array',
+          endpoint: normalizedEndpoint
+        });
+      }
+
       const stores = Array.isArray(record.stores) ? record.stores as StoreRecord[] : [];
 
       for (const store of stores) {

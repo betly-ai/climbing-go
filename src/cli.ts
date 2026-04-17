@@ -5,9 +5,13 @@ import { EndpointValidationError, resolveEndpoint, sanitizeEndpoint, validateEnd
 import { CLIMBING_GO_VERSION } from './version.js';
 import { createStoreGateway, StoreGatewayError, type StoreGateway } from './store-gateway.js';
 
+export interface GatewayFactoryOptions {
+  allowInsecure?: boolean;
+}
+
 export interface RunCliOptions {
   env?: EnvMap;
-  gatewayFactory?: (endpoint: string) => StoreGateway;
+  gatewayFactory?: (endpoint: string, options?: GatewayFactoryOptions) => StoreGateway;
   writeOut?: (value: string) => void;
   writeErr?: (value: string) => void;
 }
@@ -115,8 +119,9 @@ export function createProgram(options: RunCliOptions = {}) {
     .description('Set config values')
     .command('endpoint <url>')
     .description('Set the climbing MCP endpoint')
-    .action(async (url: string) => {
-      validateEndpoint(url);
+    .option('--insecure', 'allow storing an http: endpoint explicitly')
+    .action(async (url: string, command: { insecure?: boolean }) => {
+      validateEndpoint(url, { allowInsecure: command.insecure });
       const currentConfig = await loadConfig(env);
       await saveConfig({ ...currentConfig, endpoint: url }, env);
       writeOut(`Saved endpoint to ${getConfigPath(env)}\n`);
@@ -151,6 +156,7 @@ export function createProgram(options: RunCliOptions = {}) {
     .command('list')
     .description('List public climbing stores')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
     .option('--city <city>', 'filter stores by city')
     .option('--search <keyword>', 'search stores by name keyword')
     .option('--limit <number>', 'limit returned stores (non-negative integer)', value => {
@@ -173,13 +179,15 @@ export function createProgram(options: RunCliOptions = {}) {
         city,
         search,
         limit,
-        offset
+        offset,
+        insecure
       }: {
         endpoint?: string;
         city?: string;
         search?: string;
         limit?: number;
         offset?: number;
+        insecure?: boolean;
       }) => {
       const config = await loadConfig(env);
       const resolvedEndpoint = resolveEndpoint({
@@ -192,8 +200,8 @@ export function createProgram(options: RunCliOptions = {}) {
         throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
       }
 
-      validateEndpoint(resolvedEndpoint);
-      const gateway = gatewayFactory(resolvedEndpoint);
+      validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+      const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
       const result = await gateway.listStores({ city, search, limit, offset });
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }
@@ -203,7 +211,8 @@ export function createProgram(options: RunCliOptions = {}) {
     .command('get <storeId>')
     .description('Get a public climbing store by id')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
-    .action(async (storeId: string, { endpoint }: { endpoint?: string }) => {
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .action(async (storeId: string, { endpoint, insecure }: { endpoint?: string; insecure?: boolean }) => {
       const config = await loadConfig(env);
       const resolvedEndpoint = resolveEndpoint({
         cliEndpoint: endpoint,
@@ -215,8 +224,8 @@ export function createProgram(options: RunCliOptions = {}) {
         throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
       }
 
-      validateEndpoint(resolvedEndpoint);
-      const gateway = gatewayFactory(resolvedEndpoint);
+      validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+      const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
       const result = await gateway.getStore(storeId);
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
     });
