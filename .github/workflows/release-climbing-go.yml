@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write # semantic-release: create GitHub releases + push changelog via @semantic-release/git
+  id-token: write # @semantic-release/npm: enable GitHub OIDC trusted publishing and npm provenance
   issues: write # @semantic-release/github: comment on issues referenced in release notes
   pull-requests: write # @semantic-release/github: comment on PRs referenced in release notes
 

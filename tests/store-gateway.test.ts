@@ -16,6 +16,23 @@ describe('store gateway endpoint validation', () => {
     ).toThrow(/only http: and https: are allowed/);
   });
 
+  it('rejects insecure http endpoints unless allowInsecure is enabled', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    expect(
+      typeof createStoreGateway === 'function'
+        ? () => createStoreGateway('http://example.com')
+        : null
+    ).toThrow(/--insecure/);
+
+    expect(
+      typeof createStoreGateway === 'function'
+        ? () => createStoreGateway('http://example.com', { allowInsecure: true })
+        : null
+    ).not.toThrow();
+  });
+
   it('strips userinfo from normalized endpoint', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
@@ -319,6 +336,38 @@ describe('store gateway', () => {
     await expect(gateway?.listStores()).rejects.toMatchObject({
       code: 'invalid_response',
       message: expect.stringContaining('missing required id or name')
+    });
+  });
+
+  it('rejects non-array stores field in listStores response', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ stores: 'oops', count: 1 })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.listStores()).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('"stores" must be an array')
     });
   });
 

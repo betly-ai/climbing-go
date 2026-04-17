@@ -8,6 +8,7 @@ import * as z from 'zod/v4';
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
 import { createStoreGateway, type ListStoresArgs, type StoreGateway, type StoreRecord } from './store-gateway.js';
+import { CLIMBING_GO_VERSION } from './version.js';
 
 export const MCP_SERVER_COMMANDS = new Set(['mcp-serve', 'serve']);
 
@@ -117,7 +118,7 @@ export async function createMcpServer(env: EnvMap = process.env) {
   const service = await createStoreService(env);
   const server = new McpServer({
     name: 'climbing-go',
-    version: '1.0.1'
+    version: CLIMBING_GO_VERSION
   });
 
   server.registerTool(
