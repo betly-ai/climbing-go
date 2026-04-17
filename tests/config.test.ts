@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -42,6 +42,25 @@ describe('config persistence', () => {
     }
 
     expect(null).toBe('https://mcp.example.com');
+  });
+
+  it('writes config file with restrictive permissions (0o600)', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'climbing-go-config-perm-'));
+    tempDirs.push(tempDir);
+
+    const configModule = await importConfigModule();
+    const saveConfig = configModule?.saveConfig;
+    const getConfigPath = configModule?.getConfigPath;
+
+    if (typeof saveConfig === 'function' && typeof getConfigPath === 'function') {
+      await saveConfig({ endpoint: 'https://mcp.example.com' }, { CLIMBING_GO_CONFIG_DIR: tempDir });
+      const fileStat = await stat(getConfigPath({ CLIMBING_GO_CONFIG_DIR: tempDir }));
+      const mode = fileStat.mode & 0o777;
+      expect(mode).toBe(0o600);
+      return;
+    }
+
+    expect(null).toBe('saveConfig or getConfigPath missing');
   });
 
   it('supports config set/get endpoint through cli commands', async () => {

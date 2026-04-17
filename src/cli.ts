@@ -153,8 +153,20 @@ export function createProgram(options: RunCliOptions = {}) {
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--city <city>', 'filter stores by city')
     .option('--search <keyword>', 'search stores by name keyword')
-    .option('--limit <number>', 'limit returned stores', value => Number.parseInt(value, 10))
-    .option('--offset <number>', 'offset returned stores', value => Number.parseInt(value, 10))
+    .option('--limit <number>', 'limit returned stores (non-negative integer)', value => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error('--limit must be a non-negative integer');
+      }
+      return n;
+    })
+    .option('--offset <number>', 'offset returned stores (non-negative integer)', value => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error('--offset must be a non-negative integer');
+      }
+      return n;
+    })
     .action(
       async ({
         endpoint,

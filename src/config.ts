@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -39,6 +39,7 @@ export async function loadConfig(env: EnvMap = process.env): Promise<ClimbingGoC
 
 export async function saveConfig(config: ClimbingGoConfig, env: EnvMap = process.env) {
   const configPath = getConfigPath(env);
-  await mkdir(path.dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  await mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  await chmod(configPath, 0o600);
 }

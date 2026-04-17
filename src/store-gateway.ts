@@ -70,6 +70,7 @@ interface JsonRpcSuccess {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
+const MAX_ERROR_BODY_LENGTH = 512;
 
 function normalizeEndpoint(endpoint: string) {
   const url = validateEndpoint(endpoint);
@@ -109,16 +110,21 @@ async function parseJsonResponse(response: Response, endpoint: string): Promise<
   }
 
   if (!response.ok) {
+    const body = rawText || response.statusText;
+    const truncatedBody = body.length > MAX_ERROR_BODY_LENGTH
+      ? `${body.slice(0, MAX_ERROR_BODY_LENGTH)}… (truncated)`
+      : body;
     throw new StoreGatewayError({
       code: 'service_error',
-      message: `MCP service error (${response.status}): ${rawText || response.statusText}`,
+      message: `MCP service error (${response.status}): ${truncatedBody}`,
       endpoint: safeEndpoint,
       status: response.status
     });
   }
 
+  let parsed: unknown;
   try {
-    return JSON.parse(rawText) as JsonRpcSuccess;
+    parsed = JSON.parse(rawText);
   } catch {
     throw new StoreGatewayError({
       code: 'invalid_response',
@@ -127,6 +133,17 @@ async function parseJsonResponse(response: Response, endpoint: string): Promise<
       status: response.status
     });
   }
+
+  if (typeof parsed !== 'object' || parsed === null || !('jsonrpc' in parsed)) {
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message: 'MCP response is not a valid JSON-RPC 2.0 object',
+      endpoint: safeEndpoint,
+      status: response.status
+    });
+  }
+
+  return parsed as JsonRpcSuccess;
 }
 
 function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
@@ -246,15 +263,46 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         timeoutMs
       });
       const text = parseContentText(response, normalizedEndpoint);
-      const data = JSON.parse(text) as { stores?: StoreRecord[]; count?: number };
+
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listStores content is not valid JSON',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof data !== 'object' || data === null) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listStores content is not a JSON object',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const record = data as Record<string, unknown>;
+      const stores = Array.isArray(record.stores) ? record.stores as StoreRecord[] : [];
+
+      for (const store of stores) {
+        if (typeof store !== 'object' || store === null || typeof store.id !== 'string' || typeof store.name !== 'string') {
+          throw new StoreGatewayError({
+            code: 'invalid_response',
+            message: 'listStores contains a store entry missing required id or name fields',
+            endpoint: normalizedEndpoint
+          });
+        }
+      }
 
       return {
         ok: true,
         tool: 'listStores',
         endpoint: normalizedEndpoint,
         data: {
-          stores: data.stores ?? [],
-          count: data.count ?? (data.stores ?? []).length
+          stores,
+          count: typeof record.count === 'number' ? record.count : stores.length
         }
       };
     },
@@ -268,7 +316,27 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         timeoutMs
       });
       const text = parseContentText(response, normalizedEndpoint);
-      const store = JSON.parse(text) as StoreRecord;
+
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'getStore content is not valid JSON',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof data !== 'object' || data === null || typeof (data as StoreRecord).id !== 'string' || typeof (data as StoreRecord).name !== 'string') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'getStore response missing required id or name fields',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const store = data as StoreRecord;
 
       return {
         ok: true,
