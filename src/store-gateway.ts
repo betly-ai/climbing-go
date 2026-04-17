@@ -1,3 +1,5 @@
+import { sanitizeEndpoint, validateEndpoint } from './endpoint.js';
+
 export interface StoreRecord {
   id: string;
   name: string;
@@ -70,7 +72,18 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
 
 function normalizeEndpoint(endpoint: string) {
-  const url = new URL(endpoint);
+  const url = validateEndpoint(endpoint);
+
+  if (url.protocol === 'http:') {
+    process.stderr.write(
+      `Warning: endpoint uses insecure http: scheme — consider using https: instead\n`
+    );
+  }
+
+  // Strip userinfo — credentials must not travel in the URL
+  url.username = '';
+  url.password = '';
+
   const normalizedPath = url.pathname.replace(/\/+$/, '');
 
   if (normalizedPath.endsWith('/api/climbing/mcp')) {
@@ -84,12 +97,13 @@ function normalizeEndpoint(endpoint: string) {
 
 async function parseJsonResponse(response: Response, endpoint: string): Promise<JsonRpcSuccess> {
   const rawText = await response.text();
+  const safeEndpoint = sanitizeEndpoint(endpoint);
 
   if (response.status === 404) {
     throw new StoreGatewayError({
       code: 'endpoint_not_found',
-      message: `MCP endpoint not found: ${endpoint}`,
-      endpoint,
+      message: `MCP endpoint not found: ${safeEndpoint}`,
+      endpoint: safeEndpoint,
       status: 404
     });
   }
@@ -98,7 +112,7 @@ async function parseJsonResponse(response: Response, endpoint: string): Promise<
     throw new StoreGatewayError({
       code: 'service_error',
       message: `MCP service error (${response.status}): ${rawText || response.statusText}`,
-      endpoint,
+      endpoint: safeEndpoint,
       status: response.status
     });
   }
@@ -109,18 +123,20 @@ async function parseJsonResponse(response: Response, endpoint: string): Promise<
     throw new StoreGatewayError({
       code: 'invalid_response',
       message: 'MCP service returned invalid JSON',
-      endpoint,
+      endpoint: safeEndpoint,
       status: response.status
     });
   }
 }
 
 function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
+  const safeEndpoint = sanitizeEndpoint(endpoint);
+
   if (payload.error?.message) {
     throw new StoreGatewayError({
       code: 'service_error',
       message: payload.error.message,
-      endpoint
+      endpoint: safeEndpoint
     });
   }
 
@@ -130,7 +146,7 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
     throw new StoreGatewayError({
       code: 'invalid_response',
       message: 'MCP response did not include text content',
-      endpoint
+      endpoint: safeEndpoint
     });
   }
 
@@ -138,7 +154,7 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
     throw new StoreGatewayError({
       code: 'not_found',
       message: text,
-      endpoint,
+      endpoint: safeEndpoint,
       status: 404
     });
   }
@@ -147,7 +163,7 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
     throw new StoreGatewayError({
       code: 'service_error',
       message: text.slice('Error:'.length).trim(),
-      endpoint
+      endpoint: safeEndpoint
     });
   }
 
@@ -190,18 +206,20 @@ async function callTool(
       throw error;
     }
 
+    const safeEndpoint = sanitizeEndpoint(input.endpoint);
+
     if (error instanceof Error && error.name === 'AbortError') {
       throw new StoreGatewayError({
         code: 'timeout',
         message: `Request timed out after ${input.timeoutMs}ms`,
-        endpoint: input.endpoint
+        endpoint: safeEndpoint
       });
     }
 
     throw new StoreGatewayError({
       code: 'network_error',
       message: error instanceof Error ? error.message : 'Network error',
-      endpoint: input.endpoint
+      endpoint: safeEndpoint
     });
   } finally {
     clearTimeout(timeoutId);

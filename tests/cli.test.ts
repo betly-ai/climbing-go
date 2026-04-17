@@ -65,6 +65,60 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('"name": "香蕉攀岩"');
   });
 
+  it('rejects endpoints with disallowed scheme', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'list', '--endpoint', 'file:///etc/passwd'], {
+            env: {},
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('should not be called');
+              },
+              async getStore() {
+                throw new Error('should not be called');
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('"code": "invalid_endpoint"');
+    expect(result.stderr).toContain('only http: and https: are allowed');
+  });
+
+  it('sanitizes endpoint in error output', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'get', 'some-store'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                const error = new Error('Store not found');
+                Object.assign(error, {
+                  code: 'not_found',
+                  endpoint: 'https://user:pass@env.example.com/path?token=secret'
+                });
+                throw error;
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).not.toContain('user:pass');
+    expect(result.stderr).not.toContain('token=secret');
+    expect(result.stderr).toContain('env.example.com');
+  });
+
   it('prints structured errors for store get failures', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
