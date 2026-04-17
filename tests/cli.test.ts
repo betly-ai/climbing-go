@@ -119,6 +119,52 @@ describe('CLI skeleton', () => {
     expect(result.stderr).toContain('env.example.com');
   });
 
+  it('rejects negative --limit value', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'list', '--limit', '-5'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('should not be called');
+              },
+              async getStore() {
+                throw new Error('should not be called');
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('non-negative integer');
+  });
+
+  it('rejects NaN --offset value', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'list', '--offset', 'abc'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('should not be called');
+              },
+              async getStore() {
+                throw new Error('should not be called');
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('non-negative integer');
+  });
+
   it('prints structured errors for store get failures', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;

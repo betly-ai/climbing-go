@@ -245,6 +245,115 @@ describe('store gateway', () => {
     });
   });
 
+  it('rejects non-2xx responses with truncated error body', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const longBody = 'x'.repeat(1000);
+    const fetchMock = async () => new Response(longBody, { status: 500 });
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.listStores()).rejects.toMatchObject({
+      code: 'service_error'
+    });
+
+    try {
+      await gateway?.listStores();
+    } catch (error: unknown) {
+      const msg = (error as Error).message;
+      expect(msg.length).toBeLessThan(700);
+      expect(msg).toContain('truncated');
+    }
+  });
+
+  it('rejects JSON-RPC response without jsonrpc field', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(JSON.stringify({ data: 'not json-rpc' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.listStores()).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('JSON-RPC 2.0')
+    });
+  });
+
+  it('validates store entries have id and name in listStores', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ stores: [{ city: '上海' }], count: 1 })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.listStores()).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('missing required id or name')
+    });
+  });
+
+  it('validates getStore response has id and name', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ city: '上海' })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.getStore('store-1')).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('missing required id or name')
+    });
+  });
+
   it('maps abort errors to timeout', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
