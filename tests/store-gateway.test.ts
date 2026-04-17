@@ -4,6 +4,50 @@ async function importStoreGatewayModule() {
   return import('../src/store-gateway.js').catch(() => null);
 }
 
+describe('store gateway endpoint validation', () => {
+  it('rejects non-http/https endpoints', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    expect(
+      typeof createStoreGateway === 'function'
+        ? () => createStoreGateway('file:///etc/passwd')
+        : null
+    ).toThrow(/only http: and https: are allowed/);
+  });
+
+  it('strips userinfo from normalized endpoint', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedUrl = '';
+
+    const fetchMock = async (input: RequestInfo | URL) => {
+      requestedUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ stores: [], count: 0 })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    };
+
+    if (typeof createStoreGateway === 'function') {
+      await createStoreGateway('https://user:pass@example.com', { fetch: fetchMock }).listStores();
+      expect(requestedUrl).not.toContain('user:pass');
+      expect(requestedUrl).toContain('example.com');
+    }
+  });
+});
+
 describe('store gateway', () => {
   it('requests a large default limit when no limit is provided', async () => {
     const storeGatewayModule = await importStoreGatewayModule();

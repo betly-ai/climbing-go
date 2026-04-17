@@ -4,6 +4,104 @@ async function importEndpointModule() {
   return import('../src/endpoint.js').catch(() => null);
 }
 
+describe('endpoint validation', () => {
+  it('accepts https: endpoints', async () => {
+    const mod = await importEndpointModule();
+    const validateEndpoint = mod?.validateEndpoint;
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('https://example.com')
+      : null
+    ).not.toThrow();
+  });
+
+  it('accepts http: endpoints', async () => {
+    const mod = await importEndpointModule();
+    const validateEndpoint = mod?.validateEndpoint;
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('http://example.com')
+      : null
+    ).not.toThrow();
+  });
+
+  it('rejects file: scheme', async () => {
+    const mod = await importEndpointModule();
+    const validateEndpoint = mod?.validateEndpoint;
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('file:///etc/passwd')
+      : null
+    ).toThrow(/only http: and https: are allowed/);
+  });
+
+  it('rejects ftp: scheme', async () => {
+    const mod = await importEndpointModule();
+    const validateEndpoint = mod?.validateEndpoint;
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('ftp://example.com/data')
+      : null
+    ).toThrow(/only http: and https: are allowed/);
+  });
+
+  it('rejects invalid URLs', async () => {
+    const mod = await importEndpointModule();
+    const validateEndpoint = mod?.validateEndpoint;
+
+    expect(typeof validateEndpoint === 'function'
+      ? () => validateEndpoint('not-a-url')
+      : null
+    ).toThrow(/Invalid endpoint URL/);
+  });
+});
+
+describe('endpoint sanitization', () => {
+  it('strips userinfo from URLs', async () => {
+    const mod = await importEndpointModule();
+    const sanitizeEndpoint = mod?.sanitizeEndpoint;
+
+    const result = typeof sanitizeEndpoint === 'function'
+      ? sanitizeEndpoint('https://user:password@example.com/path')
+      : null;
+
+    expect(result).toBe('https://example.com/path');
+  });
+
+  it('strips query parameters from URLs', async () => {
+    const mod = await importEndpointModule();
+    const sanitizeEndpoint = mod?.sanitizeEndpoint;
+
+    const result = typeof sanitizeEndpoint === 'function'
+      ? sanitizeEndpoint('https://example.com/path?token=secret&key=abc')
+      : null;
+
+    expect(result).toBe('https://example.com/path');
+  });
+
+  it('strips hash from URLs', async () => {
+    const mod = await importEndpointModule();
+    const sanitizeEndpoint = mod?.sanitizeEndpoint;
+
+    const result = typeof sanitizeEndpoint === 'function'
+      ? sanitizeEndpoint('https://example.com/path#fragment')
+      : null;
+
+    expect(result).toBe('https://example.com/path');
+  });
+
+  it('returns <invalid-url> for unparseable input', async () => {
+    const mod = await importEndpointModule();
+    const sanitizeEndpoint = mod?.sanitizeEndpoint;
+
+    const result = typeof sanitizeEndpoint === 'function'
+      ? sanitizeEndpoint('not-a-url')
+      : null;
+
+    expect(result).toBe('<invalid-url>');
+  });
+});
+
 describe('endpoint resolution', () => {
   it('prefers cli option over env and config endpoint', async () => {
     const endpointModule = await importEndpointModule();

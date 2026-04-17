@@ -1,7 +1,7 @@
 import { Command, CommanderError } from 'commander';
 
 import { getConfigPath, loadConfig, saveConfig, type EnvMap } from './config.js';
-import { resolveEndpoint } from './endpoint.js';
+import { EndpointValidationError, resolveEndpoint, sanitizeEndpoint, validateEndpoint } from './endpoint.js';
 import { CLIMBING_GO_VERSION } from './version.js';
 import { createStoreGateway, StoreGatewayError, type StoreGateway } from './store-gateway.js';
 
@@ -19,6 +19,20 @@ export interface RunCliResult {
 }
 
 function serializeCliError(error: unknown) {
+  if (error instanceof EndpointValidationError) {
+    return JSON.stringify(
+      {
+        ok: false,
+        error: {
+          code: 'invalid_endpoint',
+          message: error.message
+        }
+      },
+      null,
+      2
+    );
+  }
+
   if (error instanceof StoreGatewayError) {
     return JSON.stringify(
       {
@@ -26,7 +40,7 @@ function serializeCliError(error: unknown) {
         error: {
           code: error.code,
           message: error.message,
-          endpoint: error.endpoint,
+          endpoint: sanitizeEndpoint(error.endpoint),
           status: error.status
         }
       },
@@ -37,7 +51,8 @@ function serializeCliError(error: unknown) {
 
   if (error instanceof Error && 'code' in error) {
     const code = typeof error.code === 'string' ? error.code : 'unknown_error';
-    const endpoint = 'endpoint' in error && typeof error.endpoint === 'string' ? error.endpoint : undefined;
+    const rawEndpoint = 'endpoint' in error && typeof error.endpoint === 'string' ? error.endpoint : undefined;
+    const endpoint = rawEndpoint ? sanitizeEndpoint(rawEndpoint) : undefined;
     const status = 'status' in error && typeof error.status === 'number' ? error.status : undefined;
 
     return JSON.stringify(
@@ -101,6 +116,7 @@ export function createProgram(options: RunCliOptions = {}) {
     .command('endpoint <url>')
     .description('Set the climbing MCP endpoint')
     .action(async (url: string) => {
+      validateEndpoint(url);
       const currentConfig = await loadConfig(env);
       await saveConfig({ ...currentConfig, endpoint: url }, env);
       writeOut(`Saved endpoint to ${getConfigPath(env)}\n`);
@@ -164,6 +180,7 @@ export function createProgram(options: RunCliOptions = {}) {
         throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
       }
 
+      validateEndpoint(resolvedEndpoint);
       const gateway = gatewayFactory(resolvedEndpoint);
       const result = await gateway.listStores({ city, search, limit, offset });
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
@@ -186,6 +203,7 @@ export function createProgram(options: RunCliOptions = {}) {
         throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
       }
 
+      validateEndpoint(resolvedEndpoint);
       const gateway = gatewayFactory(resolvedEndpoint);
       const result = await gateway.getStore(storeId);
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
