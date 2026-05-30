@@ -7,7 +7,14 @@ import * as z from 'zod/v4';
 
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
-import { createStoreGateway, type ListStoresArgs, type StoreGateway, type StoreRecord } from './store-gateway.js';
+import {
+  createStoreGateway,
+  type ListProductsArgs,
+  type ListStoresArgs,
+  type ProductRecord,
+  type StoreGateway,
+  type StoreRecord
+} from './store-gateway.js';
 import { CLIMBING_GO_VERSION } from './version.js';
 
 export const MCP_SERVER_COMMANDS = new Set(['mcp-serve', 'serve']);
@@ -18,6 +25,11 @@ interface StoreService {
     count: number;
   }>;
   getStore(storeId: string): Promise<StoreRecord>;
+  listProducts(args: ListProductsArgs): Promise<{
+    store?: StoreRecord;
+    products: ProductRecord[];
+    count: number;
+  }>;
 }
 
 async function loadFixtureJson<T>(fixtureDir: string, fileName: string) {
@@ -65,6 +77,30 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
       }
 
       return payload;
+    },
+
+    async listProducts(args) {
+      const payload = await loadFixtureJson<{
+        store?: StoreRecord;
+        products: ProductRecord[];
+        count?: number;
+      }>(fixtureDir, 'product-list.json');
+
+      const filtered = (payload.products ?? []).filter(product => {
+        if (args.search && !product.name.toLowerCase().includes(args.search.toLowerCase())) {
+          return false;
+        }
+
+        return true;
+      });
+      const start = Math.max(args.offset ?? 0, 0);
+      const end = args.limit ? start + Math.max(args.limit, 0) : undefined;
+
+      return {
+        store: payload.store,
+        products: filtered.slice(start, end),
+        count: filtered.length
+      };
     }
   };
 }
@@ -95,6 +131,11 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
     async getStore(storeId) {
       const result = await gateway.getStore(storeId);
       return result.data.store;
+    },
+
+    async listProducts(args) {
+      const result = await gateway.listProducts(args);
+      return result.data;
     }
   };
 }
@@ -144,6 +185,22 @@ export async function createMcpServer(env: EnvMap = process.env) {
       }
     },
     async ({ id }) => createTextResult(await service.getStore(id))
+  );
+
+  server.registerTool(
+    'listProducts',
+    {
+      description: 'List public Banana Climbing products for a store or city.',
+      inputSchema: {
+        storeId: z.string().optional().describe('Store id. Takes precedence over city.'),
+        city: z.string().optional().describe('Select a store by city when storeId is not provided.'),
+        storeSearch: z.string().optional().describe('Search store name when storeId is not provided.'),
+        search: z.string().optional().describe('Filter products by keyword in the product name.'),
+        limit: z.number().int().nonnegative().optional().describe('Limit the number of returned products.'),
+        offset: z.number().int().nonnegative().optional().describe('Skip this many products before returning results.')
+      }
+    },
+    async (args) => createTextResult(await service.listProducts(args))
   );
 
   return server;

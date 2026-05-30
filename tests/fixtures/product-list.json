@@ -1,0 +1,44 @@
+{
+  "store": {
+    "id": "541aaea2-a48a-4b1d-8637-51cf4c54c7d4",
+    "name": "晨岩深圳湾店",
+    "city": "shenzhen"
+  },
+  "products": [
+    {
+      "id": "e59284a1-773a-4c01-865e-67ca10cbb542",
+      "product_id": "e59284a1-773a-4c01-865e-67ca10cbb542",
+      "name": "10次攀岩卡",
+      "type": "count",
+      "variants": [
+        {
+          "id": "40703dd6-2b94-4219-8a32-ad3437ac727f",
+          "name": "10次攀岩卡 标准价",
+          "price": 123,
+          "original_price": 150
+        },
+        {
+          "id": "58954aa6-4ac1-428b-8f75-f59bc4d6ef43",
+          "name": "10次攀岩卡 活动价",
+          "price": 99,
+          "original_price": 150
+        }
+      ]
+    },
+    {
+      "id": "8d99407c-2445-4a98-97bb-3d3a7d0b69e9",
+      "product_id": "8d99407c-2445-4a98-97bb-3d3a7d0b69e9",
+      "name": "月度攀岩卡",
+      "type": "time",
+      "variants": [
+        {
+          "id": "3545a29b-58dc-4d03-8a67-529fbdc248fb",
+          "name": "月度攀岩卡 深圳通用价",
+          "price": 456,
+          "original_price": 456
+        }
+      ]
+    }
+  ],
+  "count": 2
+}

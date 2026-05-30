@@ -14,6 +14,21 @@ export interface ListStoresArgs {
   offset?: number;
 }
 
+export interface ProductRecord {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface ListProductsArgs {
+  storeId?: string;
+  city?: string;
+  storeSearch?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface StoreGateway {
   listStores(args?: ListStoresArgs): Promise<{
     ok: true;
@@ -30,6 +45,16 @@ export interface StoreGateway {
     endpoint: string;
     data: {
       store: StoreRecord;
+    };
+  }>;
+  listProducts(args?: ListProductsArgs): Promise<{
+    ok: true;
+    tool: 'listProducts';
+    endpoint: string;
+    data: {
+      store?: StoreRecord;
+      products: ProductRecord[];
+      count: number;
     };
   }>;
 }
@@ -71,6 +96,7 @@ interface JsonRpcSuccess {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
+const DEFAULT_PRODUCT_LIST_LIMIT = 100;
 const MAX_ERROR_BODY_LENGTH = 512;
 
 function normalizeEndpoint(endpoint: string, allowInsecure = false) {
@@ -191,7 +217,7 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
 async function callTool(
   input: {
     endpoint: string;
-    toolName: 'listStores' | 'getStore';
+    toolName: 'listStores' | 'getStore' | 'listProducts';
     args: object;
     fetchImpl: typeof fetch;
     timeoutMs: number;
@@ -354,6 +380,74 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         endpoint: normalizedEndpoint,
         data: {
           store
+        }
+      };
+    },
+
+    async listProducts(args: ListProductsArgs = {}) {
+      const requestArgs =
+        args.limit === undefined
+          ? { ...args, limit: DEFAULT_PRODUCT_LIST_LIMIT }
+          : args;
+
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'listProducts',
+        args: requestArgs,
+        fetchImpl,
+        timeoutMs
+      });
+      const text = parseContentText(response, normalizedEndpoint);
+
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listProducts content is not valid JSON',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof data !== 'object' || data === null) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listProducts content is not a JSON object',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const record = data as Record<string, unknown>;
+
+      if ('products' in record && !Array.isArray(record.products)) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listProducts response field "products" must be an array',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const products = Array.isArray(record.products) ? record.products as ProductRecord[] : [];
+
+      for (const product of products) {
+        if (typeof product !== 'object' || product === null || typeof product.id !== 'string' || typeof product.name !== 'string') {
+          throw new StoreGatewayError({
+            code: 'invalid_response',
+            message: 'listProducts contains a product entry missing required id or name fields',
+            endpoint: normalizedEndpoint
+          });
+        }
+      }
+
+      return {
+        ok: true,
+        tool: 'listProducts',
+        endpoint: normalizedEndpoint,
+        data: {
+          store: record.store as StoreRecord | undefined,
+          products,
+          count: typeof record.count === 'number' ? record.count : products.length
         }
       };
     }

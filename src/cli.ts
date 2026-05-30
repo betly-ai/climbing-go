@@ -143,6 +143,7 @@ export function createProgram(options: RunCliOptions = {}) {
     });
 
   const storeCommand = program.command('store').description('Query public climbing stores');
+  const productCommand = program.command('product').description('Query public climbing products');
 
   program
     .command('mcp-serve')
@@ -229,6 +230,74 @@ export function createProgram(options: RunCliOptions = {}) {
       const result = await gateway.getStore(storeId);
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
     });
+
+  productCommand
+    .command('list')
+    .description('List public climbing products')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .option('--store-id <storeId>', 'filter products by store id')
+    .option('--city <city>', 'select a store by city when store id is not provided')
+    .option('--store-search <keyword>', 'search store name when store id is not provided')
+    .option('--search <keyword>', 'search products by name keyword')
+    .option('--limit <number>', 'limit returned products (non-negative integer)', value => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error('--limit must be a non-negative integer');
+      }
+      return n;
+    })
+    .option('--offset <number>', 'offset returned products (non-negative integer)', value => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error('--offset must be a non-negative integer');
+      }
+      return n;
+    })
+    .action(
+      async ({
+        endpoint,
+        storeId,
+        city,
+        storeSearch,
+        search,
+        limit,
+        offset,
+        insecure
+      }: {
+        endpoint?: string;
+        storeId?: string;
+        city?: string;
+        storeSearch?: string;
+        search?: string;
+        limit?: number;
+        offset?: number;
+        insecure?: boolean;
+      }) => {
+        const config = await loadConfig(env);
+        const resolvedEndpoint = resolveEndpoint({
+          cliEndpoint: endpoint,
+          configEndpoint: config.endpoint,
+          env
+        });
+
+        if (!resolvedEndpoint) {
+          throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
+        }
+
+        validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+        const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const result = await gateway.listProducts({
+          storeId,
+          city,
+          storeSearch,
+          search,
+          limit,
+          offset
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
 
   return program;
 }

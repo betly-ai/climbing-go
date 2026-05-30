@@ -27,6 +27,20 @@ describe('skill package', () => {
     expect(skill).not.toContain('CLIMBING_MCP_ENDPOINT');
   });
 
+  it('ships a public product skill with product list examples', async () => {
+    const skill = await readRepoFile('skills/betly-product/SKILL.md');
+
+    expect(skill).toContain('name: betly-product');
+    expect(skill).toContain('description: Use when');
+    expect(skill).toContain('product list');
+    expect(skill).toContain('公开产品列表');
+    expect(skill).toContain('climbing-go product list');
+    expect(skill).toContain('--store-search');
+    expect(skill).toContain('data.products[].variants');
+    expect(skill).toContain('original_price');
+    expect(skill).toContain('card 类型产品');
+  });
+
   it('publishes the skill files in the npm package', async () => {
     const packageJson = JSON.parse(await readRepoFile('package.json')) as {
       files?: string[];
@@ -40,8 +54,10 @@ describe('skill package', () => {
 
     expect(readme).toContain('## Skill');
     expect(readme).toContain('skills/betly-store/SKILL.md');
+    expect(readme).toContain('skills/betly-product/SKILL.md');
     expect(readme).toContain('climbing-go store list --city 上海');
-    expect(readme).toContain('已支持通过 MCP 查询公开门店列表与详情');
+    expect(readme).toContain('climbing-go product list');
+    expect(readme).toContain('已支持通过 MCP 查询公开门店列表、门店详情与公开产品列表');
     expect(readme).not.toContain('config set endpoint https://mcp.example.com');
   });
 });

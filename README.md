@@ -12,7 +12,7 @@
 
 它把香蕉攀岩的公开门店查询能力封装成了好用的 CLI 与 MCP 接口，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
 
-已支持通过 MCP 查询公开门店列表与详情。
+已支持通过 MCP 查询公开门店列表、门店详情与公开产品列表。
 
 ## 为什么是香蕉攀岩
 
@@ -53,14 +53,25 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 
 `store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时会按传入分页参数返回。
 
+也可以查询门店可售公开产品：
+
+```bash
+climbing-go product list --city 深圳 --store-search iN
+climbing-go product list --city 深圳 --store-search iN --search 月卡
+climbing-go product list --store-id <storeId> --search 次卡
+```
+
+`product list` 当前仅返回公开 card 类型产品。
+
 ## 你可以用它做什么
 
 - 看香蕉攀岩全部公开门店
 - 按城市筛选香蕉攀岩门店
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
+- 查看某个城市或门店当前公开可售的 card 类型产品
 
-当前不包含课程、会员、订单和其他私有能力。
+当前不包含下单、支付、会员私有资产、订单和其他私有能力。
 
 ## 常用命令
 
@@ -69,6 +80,8 @@ climbing-go store list
 climbing-go store list --city 上海
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go product list --city 深圳 --store-search iN
+climbing-go product list --city 深圳 --store-search iN --search 月卡
 ```
 
 ## 返回结果怎么看
@@ -77,6 +90,8 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 
 - `store list` 重点看 `data.stores` 和 `data.count`
 - `store get` 重点看 `data.store`
+- `product list` 重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
+- SKU 最小字段为 `id`、`name`、`price`、`original_price`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
 
 ## Skill
@@ -92,12 +107,14 @@ npx skills add betly-ai/climbing-go -y -g
 当前提供的 skill：
 
 - `betly-store`：给 AI Agent 用的公开门店查询 skill，可以查门店列表和门店详情
+- `betly-product`：给 AI Agent 用的公开产品查询 skill，可以查门店可售 card 类型产品列表
 
 skill 文件位置：
 
 `skills/betly-store/SKILL.md`
+`skills/betly-product/SKILL.md`
 
-装好以后，Agent 会优先通过 `climbing-go` 命令查门店，而不是直接绕过 CLI 去请求底层 MCP。
+装好以后，Agent 会优先通过 `climbing-go` 命令查门店和公开产品，而不是直接绕过 CLI 去请求底层 MCP。
 
 ## 作为 MCP Server 使用
 
@@ -137,10 +154,11 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露两个 MCP tools：
+启动后会通过 stdio 暴露三个 MCP tools：
 
 - `listStores`
 - `getStore`
+- `listProducts`
 
 ## 如果你想自己开发
 

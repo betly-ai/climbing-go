@@ -15,6 +15,7 @@ describe('CLI skeleton', () => {
         : '';
 
     expect(helpText).toContain('store');
+    expect(helpText).toContain('product');
     expect(helpText).toContain('config');
     expect(helpText).toContain('mcp-serve');
   });
@@ -29,6 +30,17 @@ describe('CLI skeleton', () => {
 
     expect(helpText).toContain('list');
     expect(helpText).toContain('get');
+  });
+
+  it('shows product subcommands in help output', async () => {
+    const cliModule = await importCliModule();
+    const createProgram = cliModule?.createProgram;
+
+    const program = typeof createProgram === 'function' ? createProgram() : null;
+    const productCommand = program?.commands.find((command: { name(): string }) => command.name() === 'product');
+    const helpText = productCommand?.helpInformation() ?? '';
+
+    expect(helpText).toContain('list');
   });
 
   it('runs store list with resolved endpoint output', async () => {
@@ -63,6 +75,67 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('"tool": "listStores"');
     expect(result.stdout).toContain('"endpoint": "https://env.example.com/api/climbing/mcp"');
     expect(result.stdout).toContain('"name": "香蕉攀岩"');
+  });
+
+  it('runs product list with resolved endpoint output', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedArgs: unknown;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['product', 'list', '--city', 'fixture-city', '--store-search', 'Fixture', '--search', 'Fixture Time'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts(args) {
+                receivedArgs = args;
+                return {
+                  ok: true,
+                  tool: 'listProducts',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    store: { id: 'fixture-store-product', name: 'Fixture Product Store' },
+                    products: [
+                      {
+                        id: 'fixture-product-time',
+                        name: 'Fixture Time Product',
+                        variants: [
+                          {
+                            id: 'fixture-variant-time',
+                            name: 'Fixture Time SKU',
+                            price: 456,
+                            original_price: 456
+                          }
+                        ]
+                      }
+                    ],
+                    count: 1
+                  }
+                };
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedArgs).toEqual({
+      city: 'fixture-city',
+      storeSearch: 'Fixture',
+      search: 'Fixture Time',
+      storeId: undefined,
+      limit: undefined,
+      offset: undefined
+    });
+    expect(result.stdout).toContain('"tool": "listProducts"');
+    expect(result.stdout).toContain('"name": "Fixture Time Product"');
+    expect(result.stdout).toContain('"id": "fixture-variant-time"');
+    expect(result.stdout).toContain('"price": 456');
   });
 
   it('rejects endpoints with disallowed scheme', async () => {

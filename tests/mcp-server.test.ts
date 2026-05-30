@@ -57,7 +57,7 @@ describe('MCP stdio server', () => {
 
     const { tools } = await client.listTools();
 
-    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore']));
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore', 'listProducts']));
 
     const listResult = await client.callTool({
       name: 'listStores',
@@ -74,12 +74,24 @@ describe('MCP stdio server', () => {
       }
     });
 
+    const productResult = await client.callTool({
+      name: 'listProducts',
+      arguments: {
+        search: '月度'
+      }
+    });
+
     const listText = listResult.content.find(item => item.type === 'text');
     const getText = getResult.content.find(item => item.type === 'text');
+    const productText = productResult.content.find(item => item.type === 'text');
 
     expect(listText?.text).toContain('"stores"');
     expect(listText?.text).toContain('上海');
     expect(getText?.text).toContain('"id": "23b9298b-5dbe-426f-94d2-5905bb41558f"');
+    expect(productText?.text).toContain('"products"');
+    expect(productText?.text).toContain('月度攀岩卡');
+    expect(productText?.text).toContain('月度攀岩卡 深圳通用价');
+    expect(productText?.text).not.toContain('10次攀岩卡');
 
     await client.close();
   });
