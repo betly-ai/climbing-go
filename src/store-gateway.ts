@@ -20,6 +20,30 @@ export interface ProductRecord {
   [key: string]: unknown;
 }
 
+export interface CreateOrderItemArgs {
+  variantId: string;
+  quantity: number;
+}
+
+export interface CreateOrderArgs {
+  storeId: string;
+  userId: string;
+  items: CreateOrderItemArgs[];
+  paymentChannel?: 'alipay';
+}
+
+export interface OrderRecord {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export interface PaymentRecord {
+  channel: string;
+  status: string;
+  [key: string]: unknown;
+}
+
 export interface ListProductsArgs {
   storeId?: string;
   city?: string;
@@ -55,6 +79,15 @@ export interface StoreGateway {
       store?: StoreRecord;
       products: ProductRecord[];
       count: number;
+    };
+  }>;
+  createOrder(args: CreateOrderArgs): Promise<{
+    ok: true;
+    tool: 'createOrder';
+    endpoint: string;
+    data: {
+      order: OrderRecord;
+      payment: PaymentRecord;
     };
   }>;
 }
@@ -214,10 +247,36 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
   return text;
 }
 
+function parseToolJson(text: string, toolName: string, endpoint: string) {
+  try {
+    const data = JSON.parse(text);
+
+    if (typeof data !== 'object' || data === null) {
+      throw new StoreGatewayError({
+        code: 'invalid_response',
+        message: `${toolName} content is not a JSON object`,
+        endpoint
+      });
+    }
+
+    return data as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof StoreGatewayError) {
+      throw error;
+    }
+
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message: `${toolName} content is not valid JSON`,
+      endpoint
+    });
+  }
+}
+
 async function callTool(
   input: {
     endpoint: string;
-    toolName: 'listStores' | 'getStore' | 'listProducts';
+    toolName: 'listStores' | 'getStore' | 'listProducts' | 'createOrder';
     args: object;
     fetchImpl: typeof fetch;
     timeoutMs: number;
@@ -448,6 +507,63 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
           store: record.store as StoreRecord | undefined,
           products,
           count: typeof record.count === 'number' ? record.count : products.length
+        }
+      };
+    },
+
+    async createOrder(args: CreateOrderArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'createOrder',
+        args,
+        fetchImpl,
+        timeoutMs
+      });
+      const text = parseContentText(response, normalizedEndpoint);
+      const record = parseToolJson(text, 'createOrder', normalizedEndpoint);
+
+      if (typeof record.order !== 'object' || record.order === null) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'createOrder response missing required order object',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof record.payment !== 'object' || record.payment === null) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'createOrder response missing required payment object',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const order = record.order as OrderRecord;
+      const payment = record.payment as PaymentRecord;
+
+      if (typeof order.id !== 'string' || typeof order.status !== 'string') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'createOrder response order missing required id or status fields',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof payment.channel !== 'string' || typeof payment.status !== 'string') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'createOrder response payment missing required channel or status fields',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      return {
+        ok: true,
+        tool: 'createOrder',
+        endpoint: normalizedEndpoint,
+        data: {
+          order,
+          payment
         }
       };
     }

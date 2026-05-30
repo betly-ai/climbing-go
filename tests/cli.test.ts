@@ -16,6 +16,7 @@ describe('CLI skeleton', () => {
 
     expect(helpText).toContain('store');
     expect(helpText).toContain('product');
+    expect(helpText).toContain('order');
     expect(helpText).toContain('config');
     expect(helpText).toContain('mcp-serve');
   });
@@ -41,6 +42,17 @@ describe('CLI skeleton', () => {
     const helpText = productCommand?.helpInformation() ?? '';
 
     expect(helpText).toContain('list');
+  });
+
+  it('shows order subcommands in help output', async () => {
+    const cliModule = await importCliModule();
+    const createProgram = cliModule?.createProgram;
+
+    const program = typeof createProgram === 'function' ? createProgram() : null;
+    const orderCommand = program?.commands.find((command: { name(): string }) => command.name() === 'order');
+    const helpText = orderCommand?.helpInformation() ?? '';
+
+    expect(helpText).toContain('create');
   });
 
   it('runs store list with resolved endpoint output', async () => {
@@ -136,6 +148,154 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('"name": "Fixture Time Product"');
     expect(result.stdout).toContain('"id": "fixture-variant-time"');
     expect(result.stdout).toContain('"price": 456');
+  });
+
+  it('runs order create with default item quantity', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedArgs: unknown;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts() {
+                throw new Error('unused');
+              },
+              async createOrder(args) {
+                receivedArgs = args;
+                return {
+                  ok: true,
+                  tool: 'createOrder',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    order: {
+                      id: 'fixture-order',
+                      store_id: 'fixture-store',
+                      user_id: 'fixture-user',
+                      status: 'pending_payment',
+                      amount: 123,
+                      currency: 'CNY',
+                      items: [
+                        {
+                          variant_id: 'fixture-variant',
+                          quantity: 1,
+                          unit_price: 123,
+                          subtotal: 123
+                        }
+                      ]
+                    },
+                    payment: {
+                      channel: 'alipay',
+                      status: 'created',
+                      payload: 'fixture-payment-payload'
+                    }
+                  }
+                };
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedArgs).toEqual({
+      storeId: 'fixture-store',
+      userId: 'fixture-user',
+      items: [{ variantId: 'fixture-variant', quantity: 1 }],
+      paymentChannel: 'alipay'
+    });
+    expect(result.stdout).toContain('"tool": "createOrder"');
+    expect(result.stdout).toContain('"quantity": 1');
+  });
+
+  it('runs order create with explicit item quantity', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedArgs: unknown;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant:2'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts() {
+                throw new Error('unused');
+              },
+              async createOrder(args) {
+                receivedArgs = args;
+                return {
+                  ok: true,
+                  tool: 'createOrder',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    order: {
+                      id: 'fixture-order',
+                      store_id: 'fixture-store',
+                      user_id: 'fixture-user',
+                      status: 'pending_payment',
+                      amount: 246,
+                      currency: 'CNY',
+                      items: []
+                    },
+                    payment: {
+                      channel: 'alipay',
+                      status: 'created',
+                      payload: 'fixture-payment-payload'
+                    }
+                  }
+                };
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedArgs).toMatchObject({
+      items: [{ variantId: 'fixture-variant', quantity: 2 }],
+      paymentChannel: 'alipay'
+    });
+  });
+
+  it('rejects non-positive order item quantity', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant:0'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('should not be called');
+              },
+              async getStore() {
+                throw new Error('should not be called');
+              },
+              async listProducts() {
+                throw new Error('should not be called');
+              },
+              async createOrder() {
+                throw new Error('should not be called');
+              }
+            })
+          })
+        : { exitCode: 0, stdout: '', stderr: '' };
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('positive integer');
   });
 
   it('rejects endpoints with disallowed scheme', async () => {

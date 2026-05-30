@@ -12,7 +12,7 @@
 
 它把香蕉攀岩的公开门店查询能力封装成了好用的 CLI 与 MCP 接口，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
 
-已支持通过 MCP 查询公开门店列表、门店详情与公开产品列表。
+已支持通过 MCP 查询公开门店列表、门店详情与公开产品列表，也支持创建 card 类型产品订单。
 
 ## 为什么是香蕉攀岩
 
@@ -63,6 +63,15 @@ climbing-go product list --store-id <storeId> --search 次卡
 
 `product list` 当前仅返回公开 card 类型产品。
 
+选择产品返回中的 `data.products[].variants[].id` 后，可以创建订单并发起支付宝支付：
+
+```bash
+climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>
+climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>:2
+```
+
+`--item <variantId>` 不传数量时默认购买 1 份；需要多份时使用 `--item <variantId>:<quantity>`。当前只支持 card 类型产品和支付宝支付。
+
 ## 你可以用它做什么
 
 - 看香蕉攀岩全部公开门店
@@ -70,8 +79,9 @@ climbing-go product list --store-id <storeId> --search 次卡
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
 - 查看某个城市或门店当前公开可售的 card 类型产品
+- 使用 SKU 创建 card 类型产品订单并发起支付宝支付
 
-当前不包含下单、支付、会员私有资产、订单和其他私有能力。
+当前不包含会员私有资产、课程预约和其他私有能力。
 
 ## 常用命令
 
@@ -82,6 +92,8 @@ climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 深圳 --store-search iN
 climbing-go product list --city 深圳 --store-search iN --search 月卡
+climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>
+climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>:2
 ```
 
 ## 返回结果怎么看
@@ -92,7 +104,26 @@ climbing-go product list --city 深圳 --store-search iN --search 月卡
 - `store get` 重点看 `data.store`
 - `product list` 重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
 - SKU 最小字段为 `id`、`name`、`price`、`original_price`
+- `order create` 使用 `data.products[].variants[].id` 作为 SKU，成功后重点看 `data.order` 和 `data.payment`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
+
+## 支付宝配置
+
+真实支付宝支付不会读取仓库里的密钥文件，必须通过环境变量或本地安全配置提供：
+
+```bash
+ALIPAY_APP_ID=<appId>
+ALIPAY_PRIVATE_KEY_PATH=/secure/path/app-private-key.pem
+ALIPAY_PUBLIC_KEY_PATH=/secure/path/alipay-public-key.pem
+ALIPAY_APP_CERT_PATH=/secure/path/app-cert.crt
+ALIPAY_PUBLIC_CERT_PATH=/secure/path/alipay-public-cert.crt
+ALIPAY_ROOT_CERT_PATH=/secure/path/alipay-root-cert.crt
+ALIPAY_GATEWAY=https://openapi.alipay.com
+ALIPAY_RETURN_URL=https://example.com/alipay/return
+ALIPAY_NOTIFY_URL=https://example.com/alipay/notify
+```
+
+普通公钥模式需要 `ALIPAY_APP_ID`、`ALIPAY_PRIVATE_KEY_PATH`、`ALIPAY_PUBLIC_KEY_PATH`；证书模式使用证书路径。缺少必要配置时会返回结构化错误，不会静默伪造支付成功。
 
 ## Skill
 
@@ -108,13 +139,15 @@ npx skills add betly-ai/climbing-go -y -g
 
 - `betly-store`：给 AI Agent 用的公开门店查询 skill，可以查门店列表和门店详情
 - `betly-product`：给 AI Agent 用的公开产品查询 skill，可以查门店可售 card 类型产品列表
+- `betly-order`：给 AI Agent 用的订单创建 skill，可以基于 SKU 创建 card 类型产品订单
 
 skill 文件位置：
 
 `skills/betly-store/SKILL.md`
 `skills/betly-product/SKILL.md`
+`skills/betly-order/SKILL.md`
 
-装好以后，Agent 会优先通过 `climbing-go` 命令查门店和公开产品，而不是直接绕过 CLI 去请求底层 MCP。
+装好以后，Agent 会优先通过 `climbing-go` 命令查门店、公开产品和创建订单，而不是直接绕过 CLI 去请求底层 MCP。
 
 ## 作为 MCP Server 使用
 
@@ -154,11 +187,12 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露三个 MCP tools：
+启动后会通过 stdio 暴露四个 MCP tools：
 
 - `listStores`
 - `getStore`
 - `listProducts`
+- `createOrder`
 
 ## 如果你想自己开发
 

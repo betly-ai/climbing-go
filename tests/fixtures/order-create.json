@@ -1,0 +1,24 @@
+{
+  "store": {
+    "id": "541aaea2-a48a-4b1d-8637-51cf4c54c7d4",
+    "name": "晨岩深圳湾店"
+  },
+  "variants": [
+    {
+      "id": "3545a29b-58dc-4d03-8a67-529fbdc248fb",
+      "name": "月度攀岩卡 深圳通用价",
+      "unit_price": 456
+    },
+    {
+      "id": "40703dd6-2b94-4219-8a32-ad3437ac727f",
+      "name": "10次攀岩卡 标准价",
+      "unit_price": 123
+    }
+  ],
+  "payment": {
+    "channel": "alipay",
+    "status": "created",
+    "payload": "fixture-alipay-payment-payload",
+    "payment_url": "https://example.com/fixture-alipay-payment"
+  }
+}

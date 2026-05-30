@@ -362,6 +362,148 @@ describe('store gateway', () => {
     });
   });
 
+  it('calls createOrder and parses structured order data', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedTool: string | undefined;
+    let requestedArgs: unknown;
+
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          name?: string;
+          arguments?: unknown;
+        };
+      };
+      requestedTool = body.params?.name;
+      requestedArgs = body.params?.arguments;
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  order: {
+                    id: 'fixture-order',
+                    store_id: 'fixture-store',
+                    user_id: 'fixture-user',
+                    status: 'pending_payment',
+                    amount: 123,
+                    currency: 'CNY',
+                    items: [
+                      {
+                        variant_id: 'fixture-variant',
+                        quantity: 1,
+                        unit_price: 123,
+                        subtotal: 123
+                      }
+                    ]
+                  },
+                  payment: {
+                    channel: 'alipay',
+                    status: 'created',
+                    payload: 'fixture-payment-payload'
+                  }
+                })
+              }
+            ]
+          }
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+    };
+
+    const result =
+      typeof createStoreGateway === 'function'
+        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).createOrder({
+            storeId: 'fixture-store',
+            userId: 'fixture-user',
+            items: [{ variantId: 'fixture-variant', quantity: 1 }],
+            paymentChannel: 'alipay'
+          })
+        : null;
+
+    expect(requestedTool).toBe('createOrder');
+    expect(requestedArgs).toEqual({
+      storeId: 'fixture-store',
+      userId: 'fixture-user',
+      items: [{ variantId: 'fixture-variant', quantity: 1 }],
+      paymentChannel: 'alipay'
+    });
+    expect(result).toEqual({
+      ok: true,
+      tool: 'createOrder',
+      endpoint: 'https://example.com/base/api/climbing/mcp',
+      data: {
+        order: {
+          id: 'fixture-order',
+          store_id: 'fixture-store',
+          user_id: 'fixture-user',
+          status: 'pending_payment',
+          amount: 123,
+          currency: 'CNY',
+          items: [
+            {
+              variant_id: 'fixture-variant',
+              quantity: 1,
+              unit_price: 123,
+              subtotal: 123
+            }
+          ]
+        },
+        payment: {
+          channel: 'alipay',
+          status: 'created',
+          payload: 'fixture-payment-payload'
+        }
+      }
+    });
+  });
+
+  it('rejects createOrder content missing required fields', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ order: { id: 'fixture-order' } })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.createOrder({
+      storeId: 'fixture-store',
+      userId: 'fixture-user',
+      items: [{ variantId: 'fixture-variant', quantity: 1 }],
+      paymentChannel: 'alipay'
+    })).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('createOrder response')
+    });
+  });
+
   it('returns a not_found error when MCP returns Store not found', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;

@@ -22,6 +22,36 @@ export interface RunCliResult {
   stderr: string;
 }
 
+function collectValues(value: string, previous: string[] = []) {
+  return [...previous, value];
+}
+
+function parseOrderItem(value: string) {
+  const [variantId, quantityText, extra] = value.split(':');
+
+  if (!variantId || extra !== undefined) {
+    throw new Error('--item must be formatted as <variantId> or <variantId>:<quantity>');
+  }
+
+  if (quantityText === undefined || quantityText === '') {
+    return {
+      variantId,
+      quantity: 1
+    };
+  }
+
+  const quantity = Number.parseInt(quantityText, 10);
+
+  if (!Number.isInteger(quantity) || quantity <= 0 || String(quantity) !== quantityText) {
+    throw new Error('--item quantity must be a positive integer');
+  }
+
+  return {
+    variantId,
+    quantity
+  };
+}
+
 function serializeCliError(error: unknown) {
   if (error instanceof EndpointValidationError) {
     return JSON.stringify(
@@ -144,6 +174,7 @@ export function createProgram(options: RunCliOptions = {}) {
 
   const storeCommand = program.command('store').description('Query public climbing stores');
   const productCommand = program.command('product').description('Query public climbing products');
+  const orderCommand = program.command('order').description('Create climbing orders');
 
   program
     .command('mcp-serve')
@@ -294,6 +325,62 @@ export function createProgram(options: RunCliOptions = {}) {
           search,
           limit,
           offset
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  orderCommand
+    .command('create')
+    .description('Create a card product order')
+    .requiredOption('--store-id <storeId>', 'store id')
+    .requiredOption('--user-id <userId>', 'public user id')
+    .option('--item <variantId[:quantity]>', 'product variant id and optional quantity', collectValues, [])
+    .option('--payment-channel <channel>', 'payment channel', 'alipay')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .action(
+      async ({
+        endpoint,
+        storeId,
+        userId,
+        item,
+        paymentChannel,
+        insecure
+      }: {
+        endpoint?: string;
+        storeId: string;
+        userId: string;
+        item: string[];
+        paymentChannel: string;
+        insecure?: boolean;
+      }) => {
+        if (item.length === 0) {
+          throw new Error('At least one --item is required');
+        }
+
+        if (paymentChannel !== 'alipay') {
+          throw new Error('--payment-channel currently only supports alipay');
+        }
+
+        const config = await loadConfig(env);
+        const resolvedEndpoint = resolveEndpoint({
+          cliEndpoint: endpoint,
+          configEndpoint: config.endpoint,
+          env
+        });
+
+        if (!resolvedEndpoint) {
+          throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
+        }
+
+        validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+        const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const result = await gateway.createOrder({
+          storeId,
+          userId,
+          items: item.map(parseOrderItem),
+          paymentChannel
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }

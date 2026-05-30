@@ -86,4 +86,30 @@ describe('config persistence', () => {
 
     expect(null).toBe('https://mcp.example.com');
   });
+
+  it('loads alipay config from environment variables', async () => {
+    const configModule = await importConfigModule();
+    const loadAlipayConfig = configModule?.loadAlipayConfig;
+
+    if (typeof loadAlipayConfig === 'function') {
+      expect(loadAlipayConfig({
+        ALIPAY_APP_ID: 'fixture-app-id',
+        ALIPAY_PRIVATE_KEY_PATH: '/tmp/fixture-private.pem',
+        ALIPAY_PUBLIC_KEY_PATH: '/tmp/fixture-public.pem',
+        ALIPAY_GATEWAY: 'https://openapi-sandbox.dl.alipaydev.com',
+        ALIPAY_RETURN_URL: 'https://example.com/return',
+        ALIPAY_NOTIFY_URL: 'https://example.com/notify'
+      })).toEqual({
+        appId: 'fixture-app-id',
+        privateKeyPath: '/tmp/fixture-private.pem',
+        publicKeyPath: '/tmp/fixture-public.pem',
+        gateway: 'https://openapi-sandbox.dl.alipaydev.com',
+        returnUrl: 'https://example.com/return',
+        notifyUrl: 'https://example.com/notify'
+      });
+      return;
+    }
+
+    expect(null).toBe('loadAlipayConfig missing');
+  });
 });

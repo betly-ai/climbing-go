@@ -19,7 +19,8 @@ Use this skill only for Betly 一期公开产品能力：card 类型产品列表
 
 - 支持 `product list`
 - 当前仅支持公开 card 类型产品列表
-- 不支持下单、支付、会员私有资产、订单、课程预约或其他未开放数据
+- 产品返回中的 `data.products[].variants[].id` 可作为 `betly-order` 的下单 SKU
+- 不支持直接在本 skill 内下单、支付、会员私有资产、订单、课程预约或其他未开放数据
 
 ## Typical User Phrases
 
@@ -85,6 +86,7 @@ climbing-go product list --store-id <storeId>
 
 - `product list` 返回 JSON，重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
 - SKU 最小字段为 `id`、`name`、`price`、`original_price`
+- 如果用户下一步要购买，使用真实返回的 `data.products[].variants[].id` 作为 `climbing-go order create --item` 的 SKU
 - 成功响应包含 `ok`、`tool`、`endpoint` 和 `data`
 - 回答价格时只引用 `data.products[].variants` 里真实存在的 SKU 字段；回答卡名、适用门店这类问题时，只引用 `data.products` 和 `data.store` 里真实存在的字段；如果返回里没有，就明确说当前公开数据未提供
 

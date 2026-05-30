@@ -8,9 +8,12 @@ import * as z from 'zod/v4';
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
 import {
+  type CreateOrderArgs,
   createStoreGateway,
   type ListProductsArgs,
   type ListStoresArgs,
+  type OrderRecord,
+  type PaymentRecord,
   type ProductRecord,
   type StoreGateway,
   type StoreRecord
@@ -30,6 +33,22 @@ interface StoreService {
     products: ProductRecord[];
     count: number;
   }>;
+  createOrder(args: CreateOrderArgs): Promise<{
+    order: OrderRecord;
+    payment: PaymentRecord;
+  }>;
+}
+
+interface FixtureOrderVariant {
+  id: string;
+  name: string;
+  unit_price: number;
+}
+
+interface FixtureOrderPayload {
+  store: StoreRecord;
+  variants: FixtureOrderVariant[];
+  payment: PaymentRecord;
 }
 
 async function loadFixtureJson<T>(fixtureDir: string, fileName: string) {
@@ -101,7 +120,65 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
         products: filtered.slice(start, end),
         count: filtered.length
       };
+    },
+
+    async createOrder(args) {
+      const payload = await loadFixtureJson<FixtureOrderPayload>(fixtureDir, 'order-create.json');
+
+      if (payload.store.id !== args.storeId) {
+        throw new Error('Store not found');
+      }
+
+      const items = args.items.map(item => {
+        const variant = payload.variants.find(candidate => candidate.id === item.variantId);
+
+        if (!variant) {
+          throw new Error(`Product variant not found: ${item.variantId}`);
+        }
+
+        return {
+          variant_id: variant.id,
+          name: variant.name,
+          quantity: item.quantity,
+          unit_price: variant.unit_price,
+          subtotal: variant.unit_price * item.quantity
+        };
+      });
+      const amount = items.reduce((sum, item) => sum + item.subtotal, 0);
+
+      return {
+        order: {
+          id: 'fixture-order-1',
+          store_id: args.storeId,
+          user_id: args.userId,
+          status: 'pending_payment',
+          amount,
+          currency: 'CNY',
+          items
+        },
+        payment: payload.payment
+      };
     }
+  };
+}
+
+function normalizeCreateOrderArgs(args: {
+  storeId: string;
+  userId: string;
+  items: Array<{
+    variantId: string;
+    quantity?: number;
+  }>;
+  paymentChannel?: 'alipay';
+}): CreateOrderArgs {
+  return {
+    storeId: args.storeId,
+    userId: args.userId,
+    items: args.items.map(item => ({
+      variantId: item.variantId,
+      quantity: item.quantity ?? 1
+    })),
+    paymentChannel: args.paymentChannel ?? 'alipay'
   };
 }
 
@@ -135,6 +212,11 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
 
     async listProducts(args) {
       const result = await gateway.listProducts(args);
+      return result.data;
+    },
+
+    async createOrder(args) {
+      const result = await gateway.createOrder(args);
       return result.data;
     }
   };
@@ -201,6 +283,23 @@ export async function createMcpServer(env: EnvMap = process.env) {
       }
     },
     async (args) => createTextResult(await service.listProducts(args))
+  );
+
+  server.registerTool(
+    'createOrder',
+    {
+      description: 'Create a card product order and start Alipay payment.',
+      inputSchema: {
+        storeId: z.string().min(1).describe('Store id.'),
+        userId: z.string().min(1).describe('Public user id for creating the order.'),
+        items: z.array(z.object({
+          variantId: z.string().min(1).describe('Product variant id from products[].variants[].id.'),
+          quantity: z.number().int().positive().optional().describe('Item quantity. Defaults to 1.')
+        })).min(1).describe('Order items.'),
+        paymentChannel: z.literal('alipay').optional().describe('Payment channel. Defaults to alipay.')
+      }
+    },
+    async (args) => createTextResult(await service.createOrder(normalizeCreateOrderArgs(args)))
   );
 
   return server;
