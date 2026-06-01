@@ -150,14 +150,14 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('"price": 456');
   });
 
-  it('runs order create with default item quantity', async () => {
+  it('runs order preview with conversation pay arguments', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
     let receivedArgs: unknown;
 
     const result =
       typeof runCli === 'function'
-        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant'], {
+        ? await runCli(['order', 'preview', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant'], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
               async listStores() {
@@ -169,18 +169,17 @@ describe('CLI skeleton', () => {
               async listProducts() {
                 throw new Error('unused');
               },
-              async createOrder(args) {
+              async previewAlipayOrder(args) {
                 receivedArgs = args;
                 return {
                   ok: true,
-                  tool: 'createOrder',
+                  tool: 'preview-alipay-order',
                   endpoint: 'https://env.example.com/api/climbing/mcp',
                   data: {
-                    order: {
-                      id: 'fixture-order',
+                    preview: {
+                      org_id: 'fixture-org',
                       store_id: 'fixture-store',
                       user_id: 'fixture-user',
-                      status: 'pending_payment',
                       amount: 123,
                       currency: 'CNY',
                       items: [
@@ -191,11 +190,78 @@ describe('CLI skeleton', () => {
                           subtotal: 123
                         }
                       ]
+                    }
+                  }
+                };
+              },
+              async createAlipayPendingOrder() {
+                throw new Error('unused');
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedArgs).toEqual({
+      orgId: 'fixture-org',
+      mobile: '13800138000',
+      storeId: 'fixture-store',
+      variantId: 'fixture-variant',
+      quantity: undefined,
+      participantId: undefined,
+      userCouponId: undefined,
+      promotionId: undefined
+    });
+    expect(result.stdout).toContain('"tool": "preview-alipay-order"');
+    expect(result.stdout).toContain('"quantity": 1');
+  });
+
+  it('runs order create with explicit quantity and payment action type', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedArgs: unknown;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['order', 'create', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant', '--quantity', '2', '--payment-action-type', 'mini_program'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts() {
+                throw new Error('unused');
+              },
+              async previewAlipayOrder() {
+                throw new Error('unused');
+              },
+              async createAlipayPendingOrder(args) {
+                receivedArgs = args;
+                return {
+                  ok: true,
+                  tool: 'create-alipay-pending-order',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    order: {
+                      order_id: 'fixture-order',
+                      order_no: 'ORD-FIXTURE',
+                      status: 'pending',
+                      amount: 246,
+                      currency: 'CNY'
                     },
                     payment: {
-                      channel: 'alipay',
-                      status: 'created',
-                      payload: 'fixture-payment-payload'
+                      channel_type: 'alipay',
+                      payment_id: 'fixture-payment',
+                      payment_ref: 'PAY-FIXTURE',
+                      provider: 'alipay'
+                    },
+                    payment_action: {
+                      type: 'mini_program',
+                      order_str: 'fixture-order-str',
+                      payment_url: null
                     }
                   }
                 };
@@ -206,76 +272,27 @@ describe('CLI skeleton', () => {
 
     expect(result.exitCode).toBe(0);
     expect(receivedArgs).toEqual({
+      orgId: 'fixture-org',
+      mobile: '13800138000',
       storeId: 'fixture-store',
-      userId: 'fixture-user',
-      items: [{ variantId: 'fixture-variant', quantity: 1 }],
-      paymentChannel: 'alipay'
+      variantId: 'fixture-variant',
+      quantity: 2,
+      participantId: undefined,
+      userCouponId: undefined,
+      promotionId: undefined,
+      paymentActionType: 'mini_program'
     });
-    expect(result.stdout).toContain('"tool": "createOrder"');
-    expect(result.stdout).toContain('"quantity": 1');
+    expect(result.stdout).toContain('"tool": "create-alipay-pending-order"');
+    expect(result.stdout).toContain('"payment_ref": "PAY-FIXTURE"');
   });
 
-  it('runs order create with explicit item quantity', async () => {
-    const cliModule = await importCliModule();
-    const runCli = cliModule?.runCli;
-    let receivedArgs: unknown;
-
-    const result =
-      typeof runCli === 'function'
-        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant:2'], {
-            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
-            gatewayFactory: () => ({
-              async listStores() {
-                throw new Error('unused');
-              },
-              async getStore() {
-                throw new Error('unused');
-              },
-              async listProducts() {
-                throw new Error('unused');
-              },
-              async createOrder(args) {
-                receivedArgs = args;
-                return {
-                  ok: true,
-                  tool: 'createOrder',
-                  endpoint: 'https://env.example.com/api/climbing/mcp',
-                  data: {
-                    order: {
-                      id: 'fixture-order',
-                      store_id: 'fixture-store',
-                      user_id: 'fixture-user',
-                      status: 'pending_payment',
-                      amount: 246,
-                      currency: 'CNY',
-                      items: []
-                    },
-                    payment: {
-                      channel: 'alipay',
-                      status: 'created',
-                      payload: 'fixture-payment-payload'
-                    }
-                  }
-                };
-              }
-            })
-          })
-        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
-
-    expect(result.exitCode).toBe(0);
-    expect(receivedArgs).toMatchObject({
-      items: [{ variantId: 'fixture-variant', quantity: 2 }],
-      paymentChannel: 'alipay'
-    });
-  });
-
-  it('rejects non-positive order item quantity', async () => {
+  it('rejects non-positive order quantity', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
 
     const result =
       typeof runCli === 'function'
-        ? await runCli(['order', 'create', '--store-id', 'fixture-store', '--user-id', 'fixture-user', '--item', 'fixture-variant:0'], {
+        ? await runCli(['order', 'create', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant', '--quantity', '0'], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
               async listStores() {
@@ -287,7 +304,10 @@ describe('CLI skeleton', () => {
               async listProducts() {
                 throw new Error('should not be called');
               },
-              async createOrder() {
+              async previewAlipayOrder() {
+                throw new Error('should not be called');
+              },
+              async createAlipayPendingOrder() {
                 throw new Error('should not be called');
               }
             })

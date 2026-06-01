@@ -66,11 +66,12 @@ climbing-go product list --store-id <storeId> --search 次卡
 选择产品返回中的 `data.products[].variants[].id` 后，可以创建订单并发起支付宝支付：
 
 ```bash
-climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>
-climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>:2
+climbing-go order preview --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId> --quantity 2
 ```
 
-`--item <variantId>` 不传数量时默认购买 1 份；需要多份时使用 `--item <variantId>:<quantity>`。当前只支持 card 类型产品和支付宝支付。
+`--quantity` 不传时默认购买 1 份。当前只支持 card 类型产品和支付宝支付。
 
 ## 你可以用它做什么
 
@@ -92,8 +93,8 @@ climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 深圳 --store-search iN
 climbing-go product list --city 深圳 --store-search iN --search 月卡
-climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>
-climbing-go order create --store-id <storeId> --user-id <userId> --item <variantId>:2
+climbing-go order preview --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
 ```
 
 ## 返回结果怎么看
@@ -104,26 +105,17 @@ climbing-go order create --store-id <storeId> --user-id <userId> --item <variant
 - `store get` 重点看 `data.store`
 - `product list` 重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
 - SKU 最小字段为 `id`、`name`、`price`、`original_price`
-- `order create` 使用 `data.products[].variants[].id` 作为 SKU，成功后重点看 `data.order` 和 `data.payment`
+- `order preview` 使用 `data.products[].variants[].id` 作为 SKU，成功后重点看 `data.preview`
+- `order create` 成功后重点看 `data.order`、`data.payment` 和 `data.payment_action.payment_url`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
 
-## 支付宝配置
+## 支付链路
 
-真实支付宝支付不会读取仓库里的密钥文件，必须通过环境变量或本地安全配置提供：
+`climbing-go` 不读取支付宝密钥，也不直接接入支付宝 SDK。
 
-```bash
-ALIPAY_APP_ID=<appId>
-ALIPAY_PRIVATE_KEY_PATH=/secure/path/app-private-key.pem
-ALIPAY_PUBLIC_KEY_PATH=/secure/path/alipay-public-key.pem
-ALIPAY_APP_CERT_PATH=/secure/path/app-cert.crt
-ALIPAY_PUBLIC_CERT_PATH=/secure/path/alipay-public-cert.crt
-ALIPAY_ROOT_CERT_PATH=/secure/path/alipay-root-cert.crt
-ALIPAY_GATEWAY=https://openapi.alipay.com
-ALIPAY_RETURN_URL=https://example.com/alipay/return
-ALIPAY_NOTIFY_URL=https://example.com/alipay/notify
-```
+订单创建会调用远端 `climbing-mcp`，再由 Betly API 的 `/api/conversation-pay` 复用现有订单与支付宝支付服务。支付宝签名、支付链接生成、notify webhook 验签和订单入账都在 Betly API 内完成。
 
-普通公钥模式需要 `ALIPAY_APP_ID`、`ALIPAY_PRIVATE_KEY_PATH`、`ALIPAY_PUBLIC_KEY_PATH`；证书模式使用证书路径。缺少必要配置时会返回结构化错误，不会静默伪造支付成功。
+`payment_action.payment_url` 是推荐展示给用户打开的支付入口。支付完成后的订单状态更新依赖支付宝 `notify_url` webhook；浏览器回跳页不作为入账依据。
 
 ## Skill
 
@@ -187,12 +179,13 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露四个 MCP tools：
+启动后会通过 stdio 暴露五个 MCP tools：
 
 - `listStores`
 - `getStore`
 - `listProducts`
-- `createOrder`
+- `preview-alipay-order`
+- `create-alipay-pending-order`
 
 ## 如果你想自己开发
 

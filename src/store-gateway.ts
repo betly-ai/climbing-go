@@ -20,30 +20,6 @@ export interface ProductRecord {
   [key: string]: unknown;
 }
 
-export interface CreateOrderItemArgs {
-  variantId: string;
-  quantity: number;
-}
-
-export interface CreateOrderArgs {
-  storeId: string;
-  userId: string;
-  items: CreateOrderItemArgs[];
-  paymentChannel?: 'alipay';
-}
-
-export interface OrderRecord {
-  id: string;
-  status: string;
-  [key: string]: unknown;
-}
-
-export interface PaymentRecord {
-  channel: string;
-  status: string;
-  [key: string]: unknown;
-}
-
 export interface ListProductsArgs {
   storeId?: string;
   city?: string;
@@ -51,6 +27,35 @@ export interface ListProductsArgs {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface PreviewAlipayOrderArgs {
+  orgId: string;
+  mobile: string;
+  storeId: string;
+  variantId: string;
+  quantity?: number;
+  participantId?: string;
+  userCouponId?: string;
+  promotionId?: string;
+}
+
+export interface CreateAlipayPendingOrderArgs extends PreviewAlipayOrderArgs {
+  paymentActionType?: 'web_cashier' | 'mini_program';
+}
+
+export interface ConversationPayPreviewResult {
+  preview: Record<string, unknown>;
+  assistant_message?: string;
+  [key: string]: unknown;
+}
+
+export interface ConversationPayCreateResult {
+  order: Record<string, unknown>;
+  payment: Record<string, unknown>;
+  payment_action: Record<string, unknown> | null;
+  assistant_message?: string;
+  [key: string]: unknown;
 }
 
 export interface StoreGateway {
@@ -81,14 +86,17 @@ export interface StoreGateway {
       count: number;
     };
   }>;
-  createOrder(args: CreateOrderArgs): Promise<{
+  previewAlipayOrder(args: PreviewAlipayOrderArgs): Promise<{
     ok: true;
-    tool: 'createOrder';
+    tool: 'preview-alipay-order';
     endpoint: string;
-    data: {
-      order: OrderRecord;
-      payment: PaymentRecord;
-    };
+    data: ConversationPayPreviewResult;
+  }>;
+  createAlipayPendingOrder(args: CreateAlipayPendingOrderArgs): Promise<{
+    ok: true;
+    tool: 'create-alipay-pending-order';
+    endpoint: string;
+    data: ConversationPayCreateResult;
   }>;
 }
 
@@ -276,7 +284,12 @@ function parseToolJson(text: string, toolName: string, endpoint: string) {
 async function callTool(
   input: {
     endpoint: string;
-    toolName: 'listStores' | 'getStore' | 'listProducts' | 'createOrder';
+    toolName:
+      | 'listStores'
+      | 'getStore'
+      | 'listProducts'
+      | 'preview-alipay-order'
+      | 'create-alipay-pending-order';
     args: object;
     fetchImpl: typeof fetch;
     timeoutMs: number;
@@ -327,6 +340,25 @@ async function callTool(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function toConversationPayArgs(args: PreviewAlipayOrderArgs | CreateAlipayPendingOrderArgs) {
+  const payload: Record<string, unknown> = {
+    org_id: args.orgId,
+    mobile: args.mobile,
+    store_id: args.storeId,
+    variant_id: args.variantId
+  };
+
+  if (args.quantity !== undefined) payload.quantity = args.quantity;
+  if (args.participantId !== undefined) payload.participant_id = args.participantId;
+  if (args.userCouponId !== undefined) payload.user_coupon_id = args.userCouponId;
+  if (args.promotionId !== undefined) payload.promotion_id = args.promotionId;
+  if ('paymentActionType' in args && args.paymentActionType !== undefined) {
+    payload.payment_action_type = args.paymentActionType;
+  }
+
+  return payload;
 }
 
 export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): StoreGateway {
@@ -511,21 +543,48 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       };
     },
 
-    async createOrder(args: CreateOrderArgs) {
+    async previewAlipayOrder(args: PreviewAlipayOrderArgs) {
       const response = await callTool({
         endpoint: normalizedEndpoint,
-        toolName: 'createOrder',
-        args,
+        toolName: 'preview-alipay-order',
+        args: toConversationPayArgs(args),
         fetchImpl,
         timeoutMs
       });
       const text = parseContentText(response, normalizedEndpoint);
-      const record = parseToolJson(text, 'createOrder', normalizedEndpoint);
+      const record = parseToolJson(text, 'preview-alipay-order', normalizedEndpoint);
+
+      if (typeof record.preview !== 'object' || record.preview === null) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'preview-alipay-order response missing required preview object',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      return {
+        ok: true,
+        tool: 'preview-alipay-order',
+        endpoint: normalizedEndpoint,
+        data: record as unknown as ConversationPayPreviewResult
+      };
+    },
+
+    async createAlipayPendingOrder(args: CreateAlipayPendingOrderArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'create-alipay-pending-order',
+        args: toConversationPayArgs(args),
+        fetchImpl,
+        timeoutMs
+      });
+      const text = parseContentText(response, normalizedEndpoint);
+      const record = parseToolJson(text, 'create-alipay-pending-order', normalizedEndpoint);
 
       if (typeof record.order !== 'object' || record.order === null) {
         throw new StoreGatewayError({
           code: 'invalid_response',
-          message: 'createOrder response missing required order object',
+          message: 'create-alipay-pending-order response missing required order object',
           endpoint: normalizedEndpoint
         });
       }
@@ -533,38 +592,43 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       if (typeof record.payment !== 'object' || record.payment === null) {
         throw new StoreGatewayError({
           code: 'invalid_response',
-          message: 'createOrder response missing required payment object',
+          message: 'create-alipay-pending-order response missing required payment object',
           endpoint: normalizedEndpoint
         });
       }
 
-      const order = record.order as OrderRecord;
-      const payment = record.payment as PaymentRecord;
-
-      if (typeof order.id !== 'string' || typeof order.status !== 'string') {
+      if (typeof record.payment_action !== 'object' && record.payment_action !== null) {
         throw new StoreGatewayError({
           code: 'invalid_response',
-          message: 'createOrder response order missing required id or status fields',
+          message: 'create-alipay-pending-order response payment_action must be an object or null',
           endpoint: normalizedEndpoint
         });
       }
 
-      if (typeof payment.channel !== 'string' || typeof payment.status !== 'string') {
+      const order = record.order as Record<string, unknown>;
+      const payment = record.payment as Record<string, unknown>;
+
+      if (typeof order.order_id !== 'string' || typeof order.status !== 'string') {
         throw new StoreGatewayError({
           code: 'invalid_response',
-          message: 'createOrder response payment missing required channel or status fields',
+          message: 'create-alipay-pending-order response order missing required order_id or status fields',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof payment.channel_type !== 'string' || typeof payment.payment_ref !== 'string') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'create-alipay-pending-order response payment missing required channel_type or payment_ref fields',
           endpoint: normalizedEndpoint
         });
       }
 
       return {
         ok: true,
-        tool: 'createOrder',
+        tool: 'create-alipay-pending-order',
         endpoint: normalizedEndpoint,
-        data: {
-          order,
-          payment
-        }
+        data: record as unknown as ConversationPayCreateResult
       };
     }
   };

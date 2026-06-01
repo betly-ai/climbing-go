@@ -1,4 +1,4 @@
-# Issue #7 创建订单 MCP / CLI 与支付宝支付接入实施计划
+# Issue #7 创建订单 MCP / CLI 与支付宝支付接入实施计划（按 betly#3360 修订）
 
 ## Header
 
@@ -7,10 +7,11 @@
 - Branch: `feature/issue-7-order-create-alipay`
 - Base: `codex/product-list`
 - Design: `docs/superpowers/specs/2026-05-30-issue-7-order-create-alipay-design.md`
+- 参考 PR: `betlysaas/betly#3360`
 
 ## 主 area
 
-`climbing-go` CLI / MCP server / gateway 层。
+`climbing-go` CLI / MCP server / gateway / skill 层。
 
 ## 允许修改范围
 
@@ -28,93 +29,68 @@
 
 ## 明确不做
 
-- 不实现课程、套餐、私教、活动等非 card 类型产品下单。
-- 不新增真实生产订单 API、数据库写入或后台订单管理页面。
-- 不使用真实门店、真实 SKU、真实用户、真实订单或真实支付数据做测试。
-- 不把支付宝 appId、私钥、公钥、证书内容硬编码进仓库。
-- 不实现完整 HTTP 回调服务。
-- 不新增复杂购物车、优惠券、会员资产、库存锁定或多支付渠道扩展。
-- 不顺手重构已有 store/product 命令和测试结构。
+- 不在 `climbing-go` 中安装或调用支付宝 SDK。
+- 不读取或保存 `ALIPAY_*` 密钥、证书、网关、returnUrl 或 notifyUrl。
+- 不实现支付宝 webhook、验签或订单入账。
+- 不实现真实订单数据库写入。
+- 不支持非 card 类型产品、复杂购物车、退款、订单查询或多支付渠道。
+- 不使用真实门店、真实 SKU、真实订单或真实支付数据做测试。
 
 ## 实施任务
 
-- [x] 添加订单类型与 gateway 方法
-  - 在 `src/store-gateway.ts` 定义 `CreateOrderArgs`、`OrderRecord`、`PaymentRecord` 等最小类型。
-  - 扩展 `StoreGateway` 接口，新增 `createOrder(args)`。
-  - 扩展 `callTool` 支持 tool name `createOrder`。
-  - 解析远端 MCP 返回，校验 `order.id`、`order.status`、`payment.channel` 等最小字段。
+- [x] 修订订单能力边界
+  - 以 `betly#3360` 为准，确认支付宝 SDK 留在 Betly API。
+  - `climbing-go` 只调用远端 `climbing-mcp` 订单工具。
+  - 删除公开包内支付宝 SDK helper 与 `ALIPAY_*` 配置入口。
 
-- [x] 实现 CLI `order create`
-  - 在 `src/cli.ts` 新增 `order` command 和 `create` subcommand。
-  - 参数包含 `--store-id`、`--user-id`、`--item`、`--payment-channel`、`--endpoint`、`--insecure`。
-  - 支持重复 `--item`。
-  - 支持 `--item <variantId>` 默认 quantity 为 1。
-  - 支持 `--item <variantId>:<quantity>` 显式数量。
-  - 校验 quantity 必须为正整数，错误输出走现有结构化错误路径。
+- [x] 调整 gateway
+  - 删除泛化 `createOrder(userId/items/paymentChannel)`。
+  - 新增 `previewAlipayOrder(args)`。
+  - 新增 `createAlipayPendingOrder(args)`。
+  - 远端 tool name 分别为 `preview-alipay-order` 和 `create-alipay-pending-order`。
+  - 内部 camelCase 参数转换为远端 snake_case 参数。
+  - 校验预览响应包含 `preview`。
+  - 校验创建响应包含 `order`、`payment`、`payment_action`。
 
-- [x] 实现 MCP `createOrder`
-  - 在 `src/mcp-server.ts` 的 `StoreService` 中新增 `createOrder`。
-  - 注册 MCP tool `createOrder`。
-  - input schema 使用 `storeId`、`userId`、`items[].variantId`、`items[].quantity?`、`paymentChannel?`。
-  - 在 tool handler 中将缺省 quantity 归一化为 1。
-  - 真实模式转发到 gateway，fixture 模式走本地 fake 服务。
+- [x] 调整 CLI
+  - 新增 `climbing-go order preview`。
+  - 调整 `climbing-go order create` 参数为 `--org-id`、`--mobile`、`--store-id`、`--variant-id`。
+  - 支持 `--quantity` 正整数。
+  - 支持 `--participant-id`、`--user-coupon-id`、`--promotion-id`。
+  - `order create` 支持 `--payment-action-type web_cashier|mini_program`。
+  - 移除 `--user-id`、`--item`、`--payment-channel`。
 
-- [x] 添加 fixture 下单桩
-  - 新增 `tests/fixtures/order-create.json`。
-  - 使用 fake store、fake user、fake variant、fake order、fake payment 数据。
-  - fixture 服务按 `variantId` 查找 fake SKU，计算 `quantity * unit_price`。
-  - 缺省 quantity 按 1 计算。
-  - 未知 SKU 返回清晰错误。
+- [x] 调整 MCP server
+  - 注册 `preview-alipay-order`。
+  - 注册 `create-alipay-pending-order`。
+  - MCP 参数使用 `org_id`、`mobile`、`store_id`、`variant_id`。
+  - fixture 模式返回 conversation-pay 形状的 fake preview/create 响应。
 
-- [x] 接入支付宝 SDK 配置边界
-  - 在 `package.json` 加入 `alipay-sdk` 依赖，并更新 lockfile。
-  - 在 `src/config.ts` 或独立 helper 中定义支付宝配置读取函数。
-  - 支持环境变量读取 appId、私钥路径、公钥/证书路径、gateway、returnUrl、notifyUrl。
-  - 不读取真实测试密钥，不在 fixture 测试中访问支付宝网络。
-  - 缺少配置时返回结构化错误。
+- [x] 移除支付宝 SDK 依赖
+  - 删除 `src/alipay.ts`。
+  - 删除 `loadAlipayConfig` 和相关类型。
+  - 从 `package.json` 移除 `alipay-sdk`。
+  - 从 `pnpm-lock.yaml` 移除 importer 中的 `alipay-sdk`。
 
-- [x] 封装支付发起最小 helper
-  - 新增内部 helper 用支付宝 SDK 生成支付发起 payload 或支付 URL。
-  - 支持首期 `alipay` 渠道。
-  - 输入使用服务端订单号、金额、标题、returnUrl、notifyUrl。
-  - 将 SDK 异常转换为现有结构化错误。
-  - 预留验签 helper，供后续回调 handler 使用。
-
-- [x] 增加 MCP 测试
-  - 更新 `tests/mcp-server.test.ts`，断言 `tools/list` 包含 `createOrder`。
-  - 调用 `createOrder` 使用 fake SKU 创建订单。
-  - 增加不传 quantity 默认 1 的断言。
-  - 增加未知 SKU 或非法 quantity 的错误断言。
-
-- [x] 增加 CLI 测试
-  - 更新 `tests/cli.test.ts`，断言 help 中包含 `order` 和 `create`。
-  - 测试 `--item fake-variant` 会传 `quantity: 1`。
-  - 测试 `--item fake-variant:2` 会传 `quantity: 2`。
-  - 测试 `--payment-channel` 默认 `alipay`。
-  - 测试非法 item 数量返回结构化错误。
-
-- [x] 增加 gateway 测试
-  - 更新 `tests/store-gateway.test.ts`，验证 JSON-RPC 请求 tool name 为 `createOrder`。
-  - 验证请求参数包含归一化后的 items。
-  - 验证结构化返回能解析为 `ok/tool/endpoint/data`。
-  - 验证缺少关键字段时报 `invalid_response`。
+- [x] 更新测试
+  - 更新 CLI 测试覆盖 `order preview`、`order create` 和非法 `--quantity`。
+  - 更新 gateway 测试覆盖远端 tool name 与 snake_case 参数。
+  - 更新 MCP stdio 测试覆盖两个订单工具。
+  - 更新 config 测试，移除支付宝配置断言。
+  - 更新 skill 测试，覆盖 `betly-order`。
 
 - [x] 更新 README 和 skill
-  - README 增加从 `product list` 到 `order create` 的最小链路。
-  - README 明确 `products[].variants[].id` 是下单 SKU。
-  - README 明确 `--item <variantId>` 数量默认 1。
-  - README 增加支付宝配置说明。
-  - 更新 `skills/betly-product/SKILL.md`，说明可继续创建订单。
-  - 新增 `skills/betly-order/SKILL.md`，描述 Agent 下单流程和限制。
+  - README 说明最小链路：`product list` -> `order preview` -> `order create`。
+  - README 说明 `climbing-go` 不接支付宝 SDK、不配置支付宝密钥。
+  - README 说明支付链接使用 `data.payment_action.payment_url`。
+  - 更新 `betly-product` 下一步购买提示。
+  - 更新 `betly-order` 说明 Agent 下单流程。
 
 - [x] 运行验证
-  - 执行 `pnpm install` 更新 lockfile。
-  - 执行 `pnpm test`。
-  - 执行 `pnpm build`。
-  - 如测试失败，按失败点修复，不做无关重构。
+  - 执行 `./node_modules/.bin/vitest run`。
+  - 执行 `./node_modules/.bin/tsc -p tsconfig.json`。
+  - 执行 `git diff --check`。
 
 - [x] 收尾
-  - 检查 `git diff`，确认只包含允许范围。
-  - 确认没有真实密钥、真实订单、真实支付数据进入仓库。
-  - 给 Issue #7 添加 `status:in-progress`。
-  - 在 Issue #7 评论设计和计划摘要。
+  - 检查 diff，确认没有真实密钥、真实订单、真实支付数据进入仓库。
+  - 更新 Issue #7 评论，说明计划已按 `betly#3360` 修订。

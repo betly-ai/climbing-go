@@ -8,12 +8,13 @@ import * as z from 'zod/v4';
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
 import {
-  type CreateOrderArgs,
+  type ConversationPayCreateResult,
+  type ConversationPayPreviewResult,
+  type CreateAlipayPendingOrderArgs,
   createStoreGateway,
   type ListProductsArgs,
   type ListStoresArgs,
-  type OrderRecord,
-  type PaymentRecord,
+  type PreviewAlipayOrderArgs,
   type ProductRecord,
   type StoreGateway,
   type StoreRecord
@@ -33,10 +34,8 @@ interface StoreService {
     products: ProductRecord[];
     count: number;
   }>;
-  createOrder(args: CreateOrderArgs): Promise<{
-    order: OrderRecord;
-    payment: PaymentRecord;
-  }>;
+  previewAlipayOrder(args: PreviewAlipayOrderArgs): Promise<ConversationPayPreviewResult>;
+  createAlipayPendingOrder(args: CreateAlipayPendingOrderArgs): Promise<ConversationPayCreateResult>;
 }
 
 interface FixtureOrderVariant {
@@ -48,7 +47,7 @@ interface FixtureOrderVariant {
 interface FixtureOrderPayload {
   store: StoreRecord;
   variants: FixtureOrderVariant[];
-  payment: PaymentRecord;
+  payment_action: Record<string, unknown> | null;
 }
 
 async function loadFixtureJson<T>(fixtureDir: string, fileName: string) {
@@ -81,6 +80,36 @@ function applyListFilters(
 }
 
 function createFixtureStoreService(fixtureDir: string): StoreService {
+  async function resolveOrderPreview(args: PreviewAlipayOrderArgs) {
+    const payload = await loadFixtureJson<FixtureOrderPayload>(fixtureDir, 'order-create.json');
+
+    if (payload.store.id !== args.storeId) {
+      throw new Error('Store not found');
+    }
+
+    const variant = payload.variants.find(candidate => candidate.id === args.variantId);
+
+    if (!variant) {
+      throw new Error(`Product variant not found: ${args.variantId}`);
+    }
+
+    const quantity = args.quantity ?? 1;
+    const amount = variant.unit_price * quantity;
+
+    return {
+      payload,
+      item: {
+        variant_id: variant.id,
+        name: variant.name,
+        quantity,
+        unit_price: variant.unit_price,
+        final_unit_price: variant.unit_price,
+        amount
+      },
+      amount
+    };
+  }
+
   return {
     async listStores(args) {
       const payload = await loadFixtureJson<{ stores: StoreRecord[]; count?: number }>(fixtureDir, 'store-list.json');
@@ -122,63 +151,84 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
       };
     },
 
-    async createOrder(args) {
-      const payload = await loadFixtureJson<FixtureOrderPayload>(fixtureDir, 'order-create.json');
+    async previewAlipayOrder(args) {
+      const preview = await resolveOrderPreview(args);
 
-      if (payload.store.id !== args.storeId) {
-        throw new Error('Store not found');
-      }
+      return {
+        preview: {
+          org_id: args.orgId,
+          store_id: args.storeId,
+          user_id: 'fixture-user',
+          items: [preview.item],
+          amount: preview.amount,
+          currency: 'CNY',
+          payment_channel_type: 'alipay'
+        },
+        assistant_message: `订单合计 ${preview.amount} 元。确认购买后我会为你创建支付宝待支付订单。`
+      };
+    },
 
-      const items = args.items.map(item => {
-        const variant = payload.variants.find(candidate => candidate.id === item.variantId);
-
-        if (!variant) {
-          throw new Error(`Product variant not found: ${item.variantId}`);
-        }
-
-        return {
-          variant_id: variant.id,
-          name: variant.name,
-          quantity: item.quantity,
-          unit_price: variant.unit_price,
-          subtotal: variant.unit_price * item.quantity
-        };
-      });
-      const amount = items.reduce((sum, item) => sum + item.subtotal, 0);
+    async createAlipayPendingOrder(args) {
+      const preview = await resolveOrderPreview(args);
 
       return {
         order: {
-          id: 'fixture-order-1',
-          store_id: args.storeId,
-          user_id: args.userId,
-          status: 'pending_payment',
-          amount,
+          order_id: 'fixture-order-1',
+          order_no: 'ORD-FIXTURE-1',
+          amount: preview.amount,
           currency: 'CNY',
-          items
+          status: 'pending',
+          expires_at: null
         },
-        payment: payload.payment
+        payment: {
+          channel_type: 'alipay',
+          payment_id: 'fixture-payment-1',
+          payment_ref: 'PAY-FIXTURE-1',
+          provider: 'alipay'
+        },
+        payment_action: preview.payload.payment_action,
+        assistant_message: `订单已创建，金额 ${preview.amount} 元。请在支付宝完成支付，支付成功后订单会自动更新。`
       };
     }
   };
 }
 
-function normalizeCreateOrderArgs(args: {
-  storeId: string;
-  userId: string;
-  items: Array<{
-    variantId: string;
-    quantity?: number;
-  }>;
-  paymentChannel?: 'alipay';
-}): CreateOrderArgs {
+function normalizePreviewAlipayOrderArgs(args: {
+  org_id: string;
+  mobile: string;
+  store_id: string;
+  variant_id: string;
+  quantity?: number;
+  participant_id?: string;
+  user_coupon_id?: string;
+  promotion_id?: string;
+}): PreviewAlipayOrderArgs {
   return {
-    storeId: args.storeId,
-    userId: args.userId,
-    items: args.items.map(item => ({
-      variantId: item.variantId,
-      quantity: item.quantity ?? 1
-    })),
-    paymentChannel: args.paymentChannel ?? 'alipay'
+    orgId: args.org_id,
+    mobile: args.mobile,
+    storeId: args.store_id,
+    variantId: args.variant_id,
+    quantity: args.quantity,
+    participantId: args.participant_id,
+    userCouponId: args.user_coupon_id,
+    promotionId: args.promotion_id
+  };
+}
+
+function normalizeCreateAlipayPendingOrderArgs(args: {
+  org_id: string;
+  mobile: string;
+  store_id: string;
+  variant_id: string;
+  quantity?: number;
+  participant_id?: string;
+  user_coupon_id?: string;
+  promotion_id?: string;
+  payment_action_type?: 'web_cashier' | 'mini_program';
+}): CreateAlipayPendingOrderArgs {
+  return {
+    ...normalizePreviewAlipayOrderArgs(args),
+    paymentActionType: args.payment_action_type
   };
 }
 
@@ -215,8 +265,13 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
       return result.data;
     },
 
-    async createOrder(args) {
-      const result = await gateway.createOrder(args);
+    async previewAlipayOrder(args) {
+      const result = await gateway.previewAlipayOrder(args);
+      return result.data;
+    },
+
+    async createAlipayPendingOrder(args) {
+      const result = await gateway.createAlipayPendingOrder(args);
       return result.data;
     }
   };
@@ -285,21 +340,36 @@ export async function createMcpServer(env: EnvMap = process.env) {
     async (args) => createTextResult(await service.listProducts(args))
   );
 
+  const conversationPayInputSchema = {
+    org_id: z.string().min(1).describe('Organization id.'),
+    mobile: z.string().min(1).describe('Payer mobile number.'),
+    store_id: z.string().min(1).describe('Store id.'),
+    variant_id: z.string().min(1).describe('Product variant id from products[].variants[].id.'),
+    quantity: z.number().int().positive().optional().describe('Item quantity. Defaults to 1.'),
+    participant_id: z.string().optional().describe('Participant id.'),
+    user_coupon_id: z.string().optional().describe('User coupon id.'),
+    promotion_id: z.string().optional().describe('Promotion id.')
+  };
+
   server.registerTool(
-    'createOrder',
+    'preview-alipay-order',
     {
-      description: 'Create a card product order and start Alipay payment.',
+      description: 'Preview an Alipay pending order before user confirmation.',
+      inputSchema: conversationPayInputSchema
+    },
+    async (args) => createTextResult(await service.previewAlipayOrder(normalizePreviewAlipayOrderArgs(args)))
+  );
+
+  server.registerTool(
+    'create-alipay-pending-order',
+    {
+      description: 'Create an Alipay pending order and return the payment action from Betly API.',
       inputSchema: {
-        storeId: z.string().min(1).describe('Store id.'),
-        userId: z.string().min(1).describe('Public user id for creating the order.'),
-        items: z.array(z.object({
-          variantId: z.string().min(1).describe('Product variant id from products[].variants[].id.'),
-          quantity: z.number().int().positive().optional().describe('Item quantity. Defaults to 1.')
-        })).min(1).describe('Order items.'),
-        paymentChannel: z.literal('alipay').optional().describe('Payment channel. Defaults to alipay.')
+        ...conversationPayInputSchema,
+        payment_action_type: z.enum(['web_cashier', 'mini_program']).optional().describe('Alipay action type. Defaults to web_cashier in Betly API.')
       }
     },
-    async (args) => createTextResult(await service.createOrder(normalizeCreateOrderArgs(args)))
+    async (args) => createTextResult(await service.createAlipayPendingOrder(normalizeCreateAlipayPendingOrderArgs(args)))
   );
 
   return server;

@@ -57,7 +57,7 @@ describe('MCP stdio server', () => {
 
     const { tools } = await client.listTools();
 
-    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore', 'listProducts', 'createOrder']));
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore', 'listProducts', 'preview-alipay-order', 'create-alipay-pending-order']));
 
     const listResult = await client.callTool({
       name: 'listStores',
@@ -81,22 +81,30 @@ describe('MCP stdio server', () => {
       }
     });
 
-    const orderResult = await client.callTool({
-      name: 'createOrder',
+    const previewResult = await client.callTool({
+      name: 'preview-alipay-order',
       arguments: {
-        storeId: '541aaea2-a48a-4b1d-8637-51cf4c54c7d4',
-        userId: 'fixture-user',
-        items: [
-          {
-            variantId: '3545a29b-58dc-4d03-8a67-529fbdc248fb'
-          }
-        ]
+        org_id: 'fixture-org',
+        mobile: '13800138000',
+        store_id: '541aaea2-a48a-4b1d-8637-51cf4c54c7d4',
+        variant_id: '3545a29b-58dc-4d03-8a67-529fbdc248fb'
+      }
+    });
+
+    const orderResult = await client.callTool({
+      name: 'create-alipay-pending-order',
+      arguments: {
+        org_id: 'fixture-org',
+        mobile: '13800138000',
+        store_id: '541aaea2-a48a-4b1d-8637-51cf4c54c7d4',
+        variant_id: '3545a29b-58dc-4d03-8a67-529fbdc248fb'
       }
     });
 
     const listText = listResult.content.find(item => item.type === 'text');
     const getText = getResult.content.find(item => item.type === 'text');
     const productText = productResult.content.find(item => item.type === 'text');
+    const previewText = previewResult.content.find(item => item.type === 'text');
     const orderText = orderResult.content.find(item => item.type === 'text');
 
     expect(listText?.text).toContain('"stores"');
@@ -106,9 +114,12 @@ describe('MCP stdio server', () => {
     expect(productText?.text).toContain('月度攀岩卡');
     expect(productText?.text).toContain('月度攀岩卡 深圳通用价');
     expect(productText?.text).not.toContain('10次攀岩卡');
+    expect(previewText?.text).toContain('"preview"');
+    expect(previewText?.text).toContain('"payment_channel_type": "alipay"');
     expect(orderText?.text).toContain('"order"');
     expect(orderText?.text).toContain('"payment"');
-    expect(orderText?.text).toContain('"quantity": 1');
+    expect(orderText?.text).toContain('"payment_action"');
+    expect(orderText?.text).toContain('"payment_url"');
 
     await client.close();
   });

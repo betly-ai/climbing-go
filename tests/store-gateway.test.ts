@@ -362,7 +362,104 @@ describe('store gateway', () => {
     });
   });
 
-  it('calls createOrder and parses structured order data', async () => {
+  it('calls preview-alipay-order and parses structured preview data', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedTool: string | undefined;
+    let requestedArgs: unknown;
+
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          name?: string;
+          arguments?: unknown;
+        };
+      };
+      requestedTool = body.params?.name;
+      requestedArgs = body.params?.arguments;
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  preview: {
+                    org_id: 'fixture-org',
+                    store_id: 'fixture-store',
+                    user_id: 'fixture-user',
+                    amount: 123,
+                    currency: 'CNY',
+                    items: [
+                      {
+                        variant_id: 'fixture-variant',
+                        quantity: 1,
+                        unit_price: 123,
+                        subtotal: 123
+                      }
+                    ],
+                    payment_channel_type: 'alipay'
+                  }
+                })
+              }
+            ]
+          }
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+    };
+
+    const result =
+      typeof createStoreGateway === 'function'
+        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).previewAlipayOrder({
+            orgId: 'fixture-org',
+            mobile: '13800138000',
+            storeId: 'fixture-store',
+            variantId: 'fixture-variant',
+            quantity: 1
+          })
+        : null;
+
+    expect(requestedTool).toBe('preview-alipay-order');
+    expect(requestedArgs).toEqual({
+      org_id: 'fixture-org',
+      mobile: '13800138000',
+      store_id: 'fixture-store',
+      variant_id: 'fixture-variant',
+      quantity: 1
+    });
+    expect(result).toEqual({
+      ok: true,
+      tool: 'preview-alipay-order',
+      endpoint: 'https://example.com/base/api/climbing/mcp',
+      data: {
+        preview: {
+          org_id: 'fixture-org',
+          store_id: 'fixture-store',
+          user_id: 'fixture-user',
+          amount: 123,
+          currency: 'CNY',
+          items: [
+            {
+              variant_id: 'fixture-variant',
+              quantity: 1,
+              unit_price: 123,
+              subtotal: 123
+            }
+          ],
+          payment_channel_type: 'alipay'
+        }
+      }
+    });
+  });
+
+  it('calls create-alipay-pending-order and parses payment action data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedTool: string | undefined;
@@ -388,25 +485,21 @@ describe('store gateway', () => {
                 type: 'text',
                 text: JSON.stringify({
                   order: {
-                    id: 'fixture-order',
-                    store_id: 'fixture-store',
-                    user_id: 'fixture-user',
-                    status: 'pending_payment',
+                    order_id: 'fixture-order',
+                    order_no: 'ORD-FIXTURE',
+                    status: 'pending',
                     amount: 123,
-                    currency: 'CNY',
-                    items: [
-                      {
-                        variant_id: 'fixture-variant',
-                        quantity: 1,
-                        unit_price: 123,
-                        subtotal: 123
-                      }
-                    ]
+                    currency: 'CNY'
                   },
                   payment: {
-                    channel: 'alipay',
-                    status: 'created',
-                    payload: 'fixture-payment-payload'
+                    channel_type: 'alipay',
+                    payment_id: 'fixture-payment',
+                    payment_ref: 'PAY-FIXTURE',
+                    provider: 'alipay'
+                  },
+                  payment_action: {
+                    type: 'web_cashier',
+                    payment_url: 'https://api.example.com/api/conversation-pay/redirect/fixture-token'
                   }
                 })
               }
@@ -422,52 +515,52 @@ describe('store gateway', () => {
 
     const result =
       typeof createStoreGateway === 'function'
-        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).createOrder({
+        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).createAlipayPendingOrder({
+            orgId: 'fixture-org',
+            mobile: '13800138000',
             storeId: 'fixture-store',
-            userId: 'fixture-user',
-            items: [{ variantId: 'fixture-variant', quantity: 1 }],
-            paymentChannel: 'alipay'
+            variantId: 'fixture-variant',
+            quantity: 1,
+            paymentActionType: 'web_cashier'
           })
         : null;
 
-    expect(requestedTool).toBe('createOrder');
+    expect(requestedTool).toBe('create-alipay-pending-order');
     expect(requestedArgs).toEqual({
-      storeId: 'fixture-store',
-      userId: 'fixture-user',
-      items: [{ variantId: 'fixture-variant', quantity: 1 }],
-      paymentChannel: 'alipay'
+      org_id: 'fixture-org',
+      mobile: '13800138000',
+      store_id: 'fixture-store',
+      variant_id: 'fixture-variant',
+      quantity: 1,
+      payment_action_type: 'web_cashier'
     });
     expect(result).toEqual({
       ok: true,
-      tool: 'createOrder',
+      tool: 'create-alipay-pending-order',
       endpoint: 'https://example.com/base/api/climbing/mcp',
       data: {
         order: {
-          id: 'fixture-order',
-          store_id: 'fixture-store',
-          user_id: 'fixture-user',
-          status: 'pending_payment',
+          order_id: 'fixture-order',
+          order_no: 'ORD-FIXTURE',
+          status: 'pending',
           amount: 123,
-          currency: 'CNY',
-          items: [
-            {
-              variant_id: 'fixture-variant',
-              quantity: 1,
-              unit_price: 123,
-              subtotal: 123
-            }
-          ]
+          currency: 'CNY'
         },
         payment: {
-          channel: 'alipay',
-          status: 'created',
-          payload: 'fixture-payment-payload'
+          channel_type: 'alipay',
+          payment_id: 'fixture-payment',
+          payment_ref: 'PAY-FIXTURE',
+          provider: 'alipay'
+        },
+        payment_action: {
+          type: 'web_cashier',
+          payment_url: 'https://api.example.com/api/conversation-pay/redirect/fixture-token'
         }
       }
     });
   });
 
-  it('rejects createOrder content missing required fields', async () => {
+  it('rejects create-alipay-pending-order content missing required fields', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
 
@@ -493,14 +586,14 @@ describe('store gateway', () => {
         ? createStoreGateway('https://example.com', { fetch: fetchMock })
         : null;
 
-    await expect(gateway?.createOrder({
+    await expect(gateway?.createAlipayPendingOrder({
+      orgId: 'fixture-org',
+      mobile: '13800138000',
       storeId: 'fixture-store',
-      userId: 'fixture-user',
-      items: [{ variantId: 'fixture-variant', quantity: 1 }],
-      paymentChannel: 'alipay'
+      variantId: 'fixture-variant'
     })).rejects.toMatchObject({
       code: 'invalid_response',
-      message: expect.stringContaining('createOrder response')
+      message: expect.stringContaining('create-alipay-pending-order response')
     });
   });
 

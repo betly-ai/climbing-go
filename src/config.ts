@@ -6,18 +6,6 @@ export interface ClimbingGoConfig {
   endpoint?: string;
 }
 
-export interface AlipayConfig {
-  appId?: string;
-  privateKeyPath?: string;
-  publicKeyPath?: string;
-  appCertPath?: string;
-  publicCertPath?: string;
-  rootCertPath?: string;
-  gateway?: string;
-  returnUrl?: string;
-  notifyUrl?: string;
-}
-
 export type EnvMap = Record<string, string | undefined>;
 
 function getConfigDir(env: EnvMap = process.env) {
@@ -54,18 +42,4 @@ export async function saveConfig(config: ClimbingGoConfig, env: EnvMap = process
   await mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   await chmod(configPath, 0o600);
-}
-
-export function loadAlipayConfig(env: EnvMap = process.env): AlipayConfig {
-  return {
-    appId: env.ALIPAY_APP_ID,
-    privateKeyPath: env.ALIPAY_PRIVATE_KEY_PATH,
-    publicKeyPath: env.ALIPAY_PUBLIC_KEY_PATH,
-    appCertPath: env.ALIPAY_APP_CERT_PATH,
-    publicCertPath: env.ALIPAY_PUBLIC_CERT_PATH,
-    rootCertPath: env.ALIPAY_ROOT_CERT_PATH,
-    gateway: env.ALIPAY_GATEWAY,
-    returnUrl: env.ALIPAY_RETURN_URL,
-    notifyUrl: env.ALIPAY_NOTIFY_URL
-  };
 }

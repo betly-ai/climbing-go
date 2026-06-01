@@ -22,34 +22,14 @@ export interface RunCliResult {
   stderr: string;
 }
 
-function collectValues(value: string, previous: string[] = []) {
-  return [...previous, value];
-}
+function parsePositiveInteger(value: string, optionName: string) {
+  const parsed = Number.parseInt(value, 10);
 
-function parseOrderItem(value: string) {
-  const [variantId, quantityText, extra] = value.split(':');
-
-  if (!variantId || extra !== undefined) {
-    throw new Error('--item must be formatted as <variantId> or <variantId>:<quantity>');
+  if (!Number.isInteger(parsed) || parsed <= 0 || String(parsed) !== value) {
+    throw new Error(`${optionName} must be a positive integer`);
   }
 
-  if (quantityText === undefined || quantityText === '') {
-    return {
-      variantId,
-      quantity: 1
-    };
-  }
-
-  const quantity = Number.parseInt(quantityText, 10);
-
-  if (!Number.isInteger(quantity) || quantity <= 0 || String(quantity) !== quantityText) {
-    throw new Error('--item quantity must be a positive integer');
-  }
-
-  return {
-    variantId,
-    quantity
-  };
+  return parsed;
 }
 
 function serializeCliError(error: unknown) {
@@ -174,7 +154,7 @@ export function createProgram(options: RunCliOptions = {}) {
 
   const storeCommand = program.command('store').description('Query public climbing stores');
   const productCommand = program.command('product').description('Query public climbing products');
-  const orderCommand = program.command('order').description('Create climbing orders');
+  const orderCommand = program.command('order').description('Preview and create Alipay pending orders');
 
   program
     .command('mcp-serve')
@@ -331,36 +311,111 @@ export function createProgram(options: RunCliOptions = {}) {
     );
 
   orderCommand
-    .command('create')
-    .description('Create a card product order')
+    .command('preview')
+    .description('Preview an Alipay card product order')
+    .requiredOption('--org-id <orgId>', 'organization id')
+    .requiredOption('--mobile <mobile>', 'payer mobile number')
     .requiredOption('--store-id <storeId>', 'store id')
-    .requiredOption('--user-id <userId>', 'public user id')
-    .option('--item <variantId[:quantity]>', 'product variant id and optional quantity', collectValues, [])
-    .option('--payment-channel <channel>', 'payment channel', 'alipay')
+    .requiredOption('--variant-id <variantId>', 'product variant id from products[].variants[].id')
+    .option('--quantity <number>', 'quantity, defaults to 1', value => parsePositiveInteger(value, '--quantity'))
+    .option('--participant-id <participantId>', 'participant id')
+    .option('--user-coupon-id <userCouponId>', 'user coupon id')
+    .option('--promotion-id <promotionId>', 'promotion id')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .action(
       async ({
         endpoint,
+        orgId,
+        mobile,
         storeId,
-        userId,
-        item,
-        paymentChannel,
+        variantId,
+        quantity,
+        participantId,
+        userCouponId,
+        promotionId,
         insecure
       }: {
         endpoint?: string;
+        orgId: string;
+        mobile: string;
         storeId: string;
-        userId: string;
-        item: string[];
-        paymentChannel: string;
+        variantId: string;
+        quantity?: number;
+        participantId?: string;
+        userCouponId?: string;
+        promotionId?: string;
         insecure?: boolean;
       }) => {
-        if (item.length === 0) {
-          throw new Error('At least one --item is required');
+        const config = await loadConfig(env);
+        const resolvedEndpoint = resolveEndpoint({
+          cliEndpoint: endpoint,
+          configEndpoint: config.endpoint,
+          env
+        });
+
+        if (!resolvedEndpoint) {
+          throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
         }
 
-        if (paymentChannel !== 'alipay') {
-          throw new Error('--payment-channel currently only supports alipay');
+        validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+        const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const result = await gateway.previewAlipayOrder({
+          orgId,
+          mobile,
+          storeId,
+          variantId,
+          quantity,
+          participantId,
+          userCouponId,
+          promotionId
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  orderCommand
+    .command('create')
+    .description('Create an Alipay pending order')
+    .requiredOption('--org-id <orgId>', 'organization id')
+    .requiredOption('--mobile <mobile>', 'payer mobile number')
+    .requiredOption('--store-id <storeId>', 'store id')
+    .requiredOption('--variant-id <variantId>', 'product variant id from products[].variants[].id')
+    .option('--quantity <number>', 'quantity, defaults to 1', value => parsePositiveInteger(value, '--quantity'))
+    .option('--participant-id <participantId>', 'participant id')
+    .option('--user-coupon-id <userCouponId>', 'user coupon id')
+    .option('--promotion-id <promotionId>', 'promotion id')
+    .option('--payment-action-type <type>', 'Alipay action type: web_cashier or mini_program', 'web_cashier')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .action(
+      async ({
+        endpoint,
+        orgId,
+        mobile,
+        storeId,
+        variantId,
+        quantity,
+        participantId,
+        userCouponId,
+        promotionId,
+        paymentActionType,
+        insecure
+      }: {
+        endpoint?: string;
+        orgId: string;
+        mobile: string;
+        storeId: string;
+        variantId: string;
+        quantity?: number;
+        participantId?: string;
+        userCouponId?: string;
+        promotionId?: string;
+        paymentActionType: string;
+        insecure?: boolean;
+      }) => {
+        if (paymentActionType !== 'web_cashier' && paymentActionType !== 'mini_program') {
+          throw new Error('--payment-action-type currently only supports web_cashier or mini_program');
         }
 
         const config = await loadConfig(env);
@@ -376,11 +431,16 @@ export function createProgram(options: RunCliOptions = {}) {
 
         validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
         const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
-        const result = await gateway.createOrder({
+        const result = await gateway.createAlipayPendingOrder({
+          orgId,
+          mobile,
           storeId,
-          userId,
-          items: item.map(parseOrderItem),
-          paymentChannel
+          variantId,
+          quantity,
+          participantId,
+          userCouponId,
+          promotionId,
+          paymentActionType
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }

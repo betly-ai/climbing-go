@@ -15,10 +15,12 @@
       "unit_price": 123
     }
   ],
-  "payment": {
-    "channel": "alipay",
-    "status": "created",
-    "payload": "fixture-alipay-payment-payload",
-    "payment_url": "https://example.com/fixture-alipay-payment"
+  "payment_action": {
+    "type": "web_cashier",
+    "order_str": null,
+    "cashier_url": "https://openapi-sandbox.dl.alipaydev.com/gateway.do?fixture=1",
+    "cashier_form": null,
+    "return_url": null,
+    "payment_url": "https://api.example.com/api/conversation-pay/redirect/fixture-token"
   }
 }

@@ -86,7 +86,7 @@ climbing-go product list --store-id <storeId>
 
 - `product list` 返回 JSON，重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
 - SKU 最小字段为 `id`、`name`、`price`、`original_price`
-- 如果用户下一步要购买，使用真实返回的 `data.products[].variants[].id` 作为 `climbing-go order create --item` 的 SKU
+- 如果用户下一步要购买，使用真实返回的 `data.products[].variants[].id` 作为 `climbing-go order preview/create --variant-id` 的 SKU
 - 成功响应包含 `ok`、`tool`、`endpoint` 和 `data`
 - 回答价格时只引用 `data.products[].variants` 里真实存在的 SKU 字段；回答卡名、适用门店这类问题时，只引用 `data.products` 和 `data.store` 里真实存在的字段；如果返回里没有，就明确说当前公开数据未提供
 
