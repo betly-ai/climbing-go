@@ -14,6 +14,63 @@ export interface ListStoresArgs {
   offset?: number;
 }
 
+export interface ProductVariantStoreRecord {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface ProductVariantRecord {
+  id: string;
+  name?: string | null;
+  price?: number;
+  original_price?: number;
+  stores?: ProductVariantStoreRecord[];
+  [key: string]: unknown;
+}
+
+export interface ProductRecord {
+  id: string;
+  name: string;
+  type: string;
+  sub_type?: string | null;
+  description?: string | null;
+  variants: ProductVariantRecord[];
+  [key: string]: unknown;
+}
+
+export interface ListProductsArgs {
+  storeIds?: string[];
+  productTypes?: string[];
+  keyword?: string;
+  limit?: number;
+}
+
+export interface AuthLoginArgs {
+  org_id: string;
+  api_key: string;
+  api_secret: string;
+  secret_version: string;
+  encrypted_phone: string;
+}
+
+export interface PreviewOrderArgs {
+  store_id: string;
+  variant_id: string;
+  quantity?: number;
+  participant_id?: string;
+  user_coupon_id?: string;
+  promotion_id?: string;
+  access_token?: string;
+  org_id?: string;
+}
+
+export interface CreateOrderArgs extends PreviewOrderArgs {
+  payment_action_type?: 'web_cashier' | 'mini_program';
+}
+
+export type JsonObject = Record<string, unknown>;
+
 export interface StoreGateway {
   listStores(args?: ListStoresArgs): Promise<{
     ok: true;
@@ -31,6 +88,35 @@ export interface StoreGateway {
     data: {
       store: StoreRecord;
     };
+  }>;
+}
+
+export interface ClimbingGateway extends StoreGateway {
+  listProducts(args?: ListProductsArgs): Promise<{
+    ok: true;
+    tool: 'listProducts';
+    endpoint: string;
+    data: {
+      products: ProductRecord[];
+    };
+  }>;
+  authLogin(args: AuthLoginArgs): Promise<{
+    ok: true;
+    tool: 'authLogin';
+    endpoint: string;
+    data: JsonObject;
+  }>;
+  previewOrder(args: PreviewOrderArgs): Promise<{
+    ok: true;
+    tool: 'previewOrder';
+    endpoint: string;
+    data: JsonObject;
+  }>;
+  createOrder(args: CreateOrderArgs): Promise<{
+    ok: true;
+    tool: 'createOrder';
+    endpoint: string;
+    data: JsonObject;
   }>;
 }
 
@@ -68,6 +154,14 @@ interface JsonRpcSuccess {
     message?: string;
   };
 }
+
+type ClimbingToolName =
+  | 'listStores'
+  | 'getStore'
+  | 'listProducts'
+  | 'authLogin'
+  | 'previewOrder'
+  | 'createOrder';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
@@ -188,11 +282,118 @@ function parseContentText(payload: JsonRpcSuccess, endpoint: string) {
   return text;
 }
 
+function parseJsonContent(payload: JsonRpcSuccess, endpoint: string, toolName: ClimbingToolName) {
+  const text = parseContentText(payload, endpoint);
+
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message: `${toolName} content is not valid JSON`,
+      endpoint
+    });
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message: `${toolName} content is not a JSON object`,
+      endpoint
+    });
+  }
+
+  const record = data as JsonObject;
+
+  if (record.success === false) {
+    throw new StoreGatewayError({
+      code: typeof record.code === 'string' ? record.code : 'service_error',
+      message: typeof record.message === 'string' ? record.message : `${toolName} failed`,
+      endpoint,
+      status: typeof record.http_status === 'number' ? record.http_status : undefined
+    });
+  }
+
+  return record;
+}
+
+function validateProductRecord(product: unknown, endpoint: string) {
+  if (
+    typeof product !== 'object' ||
+    product === null ||
+    typeof (product as ProductRecord).id !== 'string' ||
+    typeof (product as ProductRecord).name !== 'string' ||
+    typeof (product as ProductRecord).type !== 'string' ||
+    !Array.isArray((product as ProductRecord).variants)
+  ) {
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message: 'listProducts contains a product entry missing required id, name, type, or variants fields',
+      endpoint
+    });
+  }
+}
+
+function buildLoginHeaders(args: AuthLoginArgs) {
+  return {
+    'X-ORG-ID': args.org_id,
+    'X-API-KEY': args.api_key,
+    'X-API-SECRET': args.api_secret,
+    'X-SECRET-VERSION': args.secret_version,
+    'X-Encryped-PHONE': args.encrypted_phone
+  };
+}
+
+function getOrderAccessToken(args: PreviewOrderArgs, endpoint: string) {
+  const accessToken = args.access_token?.trim();
+  if (!accessToken) {
+    throw new StoreGatewayError({
+      code: 'CONVERSATION_AGENT_TOKEN_REQUIRED',
+      message: '缺少登录 MCP 返回的 accessToken',
+      endpoint
+    });
+  }
+
+  return accessToken;
+}
+
+function buildOrderHeaders(args: PreviewOrderArgs, endpoint: string) {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${getOrderAccessToken(args, endpoint)}`
+  };
+
+  const orgId = args.org_id?.trim();
+  if (orgId) {
+    headers['X-ORG-ID'] = orgId;
+  }
+
+  return headers;
+}
+
+function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs) {
+  const payload: Record<string, unknown> = {
+    store_id: args.store_id,
+    variant_id: args.variant_id
+  };
+
+  if (args.quantity !== undefined) payload.quantity = args.quantity;
+  if (args.participant_id !== undefined) payload.participant_id = args.participant_id;
+  if (args.user_coupon_id !== undefined) payload.user_coupon_id = args.user_coupon_id;
+  if (args.promotion_id !== undefined) payload.promotion_id = args.promotion_id;
+  if ('payment_action_type' in args && args.payment_action_type !== undefined) {
+    payload.payment_action_type = args.payment_action_type;
+  }
+
+  return payload;
+}
+
 async function callTool(
   input: {
     endpoint: string;
-    toolName: 'listStores' | 'getStore';
+    toolName: ClimbingToolName;
     args: object;
+    headers?: Record<string, string>;
     fetchImpl: typeof fetch;
     timeoutMs: number;
   }
@@ -204,7 +405,8 @@ async function callTool(
     const response = await input.fetchImpl(input.endpoint, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        ...input.headers
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -244,7 +446,7 @@ async function callTool(
   }
 }
 
-export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): StoreGateway {
+export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): ClimbingGateway {
   const normalizedEndpoint = normalizeEndpoint(endpoint, options.allowInsecure);
   const fetchImpl = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -355,6 +557,97 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         data: {
           store
         }
+      };
+    },
+
+    async listProducts(args: ListProductsArgs = {}) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'listProducts',
+        args,
+        fetchImpl,
+        timeoutMs
+      });
+      const record = parseJsonContent(response, normalizedEndpoint, 'listProducts');
+
+      if ('products' in record && !Array.isArray(record.products)) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'listProducts response field "products" must be an array',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      const products = Array.isArray(record.products) ? record.products as ProductRecord[] : [];
+
+      for (const product of products) {
+        validateProductRecord(product, normalizedEndpoint);
+      }
+
+      return {
+        ok: true,
+        tool: 'listProducts',
+        endpoint: normalizedEndpoint,
+        data: {
+          products
+        }
+      };
+    },
+
+    async authLogin(args: AuthLoginArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'authLogin',
+        args: {},
+        headers: buildLoginHeaders(args),
+        fetchImpl,
+        timeoutMs
+      });
+      const data = parseJsonContent(response, normalizedEndpoint, 'authLogin');
+
+      return {
+        ok: true,
+        tool: 'authLogin',
+        endpoint: normalizedEndpoint,
+        data
+      };
+    },
+
+    async previewOrder(args: PreviewOrderArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'previewOrder',
+        args: toOrderToolArgs(args),
+        headers: buildOrderHeaders(args, normalizedEndpoint),
+        fetchImpl,
+        timeoutMs
+      });
+      const data = parseJsonContent(response, normalizedEndpoint, 'previewOrder');
+
+      return {
+        ok: true,
+        tool: 'previewOrder',
+        endpoint: normalizedEndpoint,
+        data
+      };
+    },
+
+    async createOrder(args: CreateOrderArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'createOrder',
+        args: toOrderToolArgs(args),
+        headers: buildOrderHeaders(args, normalizedEndpoint),
+        fetchImpl,
+        timeoutMs
+      });
+      const data = parseJsonContent(response, normalizedEndpoint, 'createOrder');
+
+      return {
+        ok: true,
+        tool: 'createOrder',
+        endpoint: normalizedEndpoint,
+        data
       };
     }
   };

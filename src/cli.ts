@@ -1,9 +1,9 @@
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 
 import { getConfigPath, loadConfig, saveConfig, type EnvMap } from './config.js';
 import { EndpointValidationError, resolveEndpoint, sanitizeEndpoint, validateEndpoint } from './endpoint.js';
 import { CLIMBING_GO_VERSION } from './version.js';
-import { createStoreGateway, StoreGatewayError, type StoreGateway } from './store-gateway.js';
+import { createStoreGateway, StoreGatewayError, type ClimbingGateway } from './store-gateway.js';
 
 export interface GatewayFactoryOptions {
   allowInsecure?: boolean;
@@ -11,7 +11,7 @@ export interface GatewayFactoryOptions {
 
 export interface RunCliOptions {
   env?: EnvMap;
-  gatewayFactory?: (endpoint: string, options?: GatewayFactoryOptions) => StoreGateway;
+  gatewayFactory?: (endpoint: string, options?: GatewayFactoryOptions) => ClimbingGateway;
   writeOut?: (value: string) => void;
   writeErr?: (value: string) => void;
 }
@@ -101,11 +101,60 @@ function serializeCliError(error: unknown) {
   );
 }
 
+function parseNonNegativeInteger(value: string) {
+  const n = Number.parseInt(value, 10);
+  if (Number.isNaN(n) || n < 0) {
+    throw new Error('value must be a non-negative integer');
+  }
+  return n;
+}
+
+function parsePositiveInteger(value: string) {
+  const n = Number.parseInt(value, 10);
+  if (Number.isNaN(n) || n < 1) {
+    throw new Error('value must be a positive integer');
+  }
+  return n;
+}
+
+function collectOptionValue(value: string, previous: string[] = []) {
+  const values = value
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
+
+  return [...previous, ...values];
+}
+
+function parsePaymentActionType(value: string) {
+  if (value !== 'web_cashier' && value !== 'mini_program') {
+    throw new Error('payment action type must be web_cashier or mini_program');
+  }
+
+  return value;
+}
+
 export function createProgram(options: RunCliOptions = {}) {
   const env = options.env ?? process.env;
   const gatewayFactory = options.gatewayFactory ?? createStoreGateway;
   const writeOut = options.writeOut ?? ((value: string) => process.stdout.write(value));
   const program = new Command();
+
+  async function createGateway(input: { endpoint?: string; insecure?: boolean }) {
+    const config = await loadConfig(env);
+    const resolvedEndpoint = resolveEndpoint({
+      cliEndpoint: input.endpoint,
+      configEndpoint: config.endpoint,
+      env
+    });
+
+    if (!resolvedEndpoint) {
+      throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
+    }
+
+    validateEndpoint(resolvedEndpoint, { allowInsecure: input.insecure });
+    return gatewayFactory(resolvedEndpoint, { allowInsecure: input.insecure });
+  }
 
   program
     .name('climbing-go')
@@ -143,6 +192,9 @@ export function createProgram(options: RunCliOptions = {}) {
     });
 
   const storeCommand = program.command('store').description('Query public climbing stores');
+  const productCommand = program.command('product').description('Query purchasable climbing products');
+  const authCommand = program.command('auth').description('Conversation agent auth tools');
+  const orderCommand = program.command('order').description('Conversation agent Alipay order tools');
 
   program
     .command('mcp-serve')
@@ -159,20 +211,8 @@ export function createProgram(options: RunCliOptions = {}) {
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .option('--city <city>', 'filter stores by city')
     .option('--search <keyword>', 'search stores by name keyword')
-    .option('--limit <number>', 'limit returned stores (non-negative integer)', value => {
-      const n = Number.parseInt(value, 10);
-      if (Number.isNaN(n) || n < 0) {
-        throw new Error('--limit must be a non-negative integer');
-      }
-      return n;
-    })
-    .option('--offset <number>', 'offset returned stores (non-negative integer)', value => {
-      const n = Number.parseInt(value, 10);
-      if (Number.isNaN(n) || n < 0) {
-        throw new Error('--offset must be a non-negative integer');
-      }
-      return n;
-    })
+    .option('--limit <number>', 'limit returned stores (non-negative integer)', parseNonNegativeInteger)
+    .option('--offset <number>', 'offset returned stores (non-negative integer)', parseNonNegativeInteger)
     .action(
       async ({
         endpoint,
@@ -189,19 +229,7 @@ export function createProgram(options: RunCliOptions = {}) {
         offset?: number;
         insecure?: boolean;
       }) => {
-      const config = await loadConfig(env);
-      const resolvedEndpoint = resolveEndpoint({
-        cliEndpoint: endpoint,
-        configEndpoint: config.endpoint,
-        env
-      });
-
-      if (!resolvedEndpoint) {
-        throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
-      }
-
-      validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
-      const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+      const gateway = await createGateway({ endpoint, insecure });
       const result = await gateway.listStores({ city, search, limit, offset });
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }
@@ -213,22 +241,233 @@ export function createProgram(options: RunCliOptions = {}) {
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .action(async (storeId: string, { endpoint, insecure }: { endpoint?: string; insecure?: boolean }) => {
-      const config = await loadConfig(env);
-      const resolvedEndpoint = resolveEndpoint({
-        cliEndpoint: endpoint,
-        configEndpoint: config.endpoint,
-        env
-      });
-
-      if (!resolvedEndpoint) {
-        throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
-      }
-
-      validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
-      const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+      const gateway = await createGateway({ endpoint, insecure });
       const result = await gateway.getStore(storeId);
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
     });
+
+  productCommand
+    .command('list')
+    .description('List purchasable products for conversation checkout')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .option('--city <city>', 'filter products by store city')
+    .option('--search <keyword>', 'search products by keyword')
+    .option('--store-id <id>', 'filter by store id; repeatable or comma-separated', collectOptionValue)
+    .option('--limit <number>', 'limit returned products (positive integer)', parsePositiveInteger)
+    .addOption(new Option('--store-search <keyword>', 'filter products by store name keyword').hideHelp())
+    .addOption(
+      new Option('--product-type <type>', 'filter by product type; repeatable or comma-separated')
+        .argParser(collectOptionValue)
+        .hideHelp()
+    )
+    .addOption(new Option('--keyword <keyword>', 'alias for --search').hideHelp())
+    .action(
+      async ({
+        endpoint,
+        insecure,
+        city,
+        search,
+        storeId,
+        storeSearch,
+        productType,
+        keyword,
+        limit
+      }: {
+        endpoint?: string;
+        insecure?: boolean;
+        city?: string;
+        search?: string;
+        storeId?: string[];
+        storeSearch?: string;
+        productType?: string[];
+        keyword?: string;
+        limit?: number;
+      }) => {
+        const gateway = await createGateway({ endpoint, insecure });
+        const explicitStoreIds = storeId && storeId.length > 0 ? storeId : [];
+        let storeIds = explicitStoreIds;
+
+        if (city || storeSearch) {
+          const storesResult = await gateway.listStores({ city, search: storeSearch });
+          const matchedStoreIds = storesResult.data.stores.map(store => store.id);
+
+          if (matchedStoreIds.length === 0 && explicitStoreIds.length === 0) {
+            writeOut(`${JSON.stringify(
+              {
+                ok: true,
+                tool: 'listProducts',
+                endpoint: storesResult.endpoint,
+                data: {
+                  products: []
+                }
+              },
+              null,
+              2
+            )}\n`);
+            return;
+          }
+
+          storeIds = [...new Set([...explicitStoreIds, ...matchedStoreIds])];
+        }
+
+        const result = await gateway.listProducts({
+          storeIds: storeIds.length > 0 ? storeIds : undefined,
+          productTypes: productType && productType.length > 0 ? productType : undefined,
+          keyword: search ?? keyword,
+          limit
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  authCommand
+    .command('login')
+    .description('Exchange platform-injected conversation-agent headers for a short-lived access token')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .requiredOption('--org-id <id>', 'organization id, forwarded as X-ORG-ID')
+    .requiredOption('--api-key <key>', 'platform api key, forwarded as X-API-KEY')
+    .requiredOption('--api-secret <secret>', 'platform api secret, forwarded as X-API-SECRET')
+    .requiredOption('--secret-version <version>', 'secret version, forwarded as X-SECRET-VERSION')
+    .requiredOption('--encrypted-phone <value>', 'encrypted phone, forwarded as X-Encryped-PHONE')
+    .action(
+      async ({
+        endpoint,
+        insecure,
+        orgId,
+        apiKey,
+        apiSecret,
+        secretVersion,
+        encryptedPhone
+      }: {
+        endpoint?: string;
+        insecure?: boolean;
+        orgId: string;
+        apiKey: string;
+        apiSecret: string;
+        secretVersion: string;
+        encryptedPhone: string;
+      }) => {
+        const gateway = await createGateway({ endpoint, insecure });
+        const result = await gateway.authLogin({
+          org_id: orgId,
+          api_key: apiKey,
+          api_secret: apiSecret,
+          secret_version: secretVersion,
+          encrypted_phone: encryptedPhone
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  orderCommand
+    .command('preview')
+    .description('Preview an Alipay pending order before user confirmation')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .requiredOption('--store-id <id>', 'purchase store id')
+    .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
+    .requiredOption('--access-token <token>', 'short-lived access token returned by auth login')
+    .option('--org-id <id>', 'organization id forwarded as X-ORG-ID')
+    .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
+    .option('--participant-id <id>', 'participant id')
+    .option('--user-coupon-id <id>', 'user coupon id')
+    .option('--promotion-id <id>', 'promotion id')
+    .action(
+      async ({
+        endpoint,
+        insecure,
+        storeId,
+        variantId,
+        accessToken,
+        orgId,
+        quantity,
+        participantId,
+        userCouponId,
+        promotionId
+      }: {
+        endpoint?: string;
+        insecure?: boolean;
+        storeId: string;
+        variantId: string;
+        accessToken: string;
+        orgId?: string;
+        quantity?: number;
+        participantId?: string;
+        userCouponId?: string;
+        promotionId?: string;
+      }) => {
+        const gateway = await createGateway({ endpoint, insecure });
+        const result = await gateway.previewOrder({
+          store_id: storeId,
+          variant_id: variantId,
+          access_token: accessToken,
+          org_id: orgId,
+          quantity,
+          participant_id: participantId,
+          user_coupon_id: userCouponId,
+          promotion_id: promotionId
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  orderCommand
+    .command('create')
+    .description('Create an Alipay pending order after explicit user confirmation')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .requiredOption('--store-id <id>', 'purchase store id')
+    .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
+    .requiredOption('--access-token <token>', 'short-lived access token returned by auth login')
+    .option('--org-id <id>', 'organization id forwarded as X-ORG-ID')
+    .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
+    .option('--participant-id <id>', 'participant id')
+    .option('--user-coupon-id <id>', 'user coupon id')
+    .option('--promotion-id <id>', 'promotion id')
+    .option('--payment-action-type <type>', 'web_cashier or mini_program', parsePaymentActionType)
+    .action(
+      async ({
+        endpoint,
+        insecure,
+        storeId,
+        variantId,
+        accessToken,
+        orgId,
+        quantity,
+        participantId,
+        userCouponId,
+        promotionId,
+        paymentActionType
+      }: {
+        endpoint?: string;
+        insecure?: boolean;
+        storeId: string;
+        variantId: string;
+        accessToken: string;
+        orgId?: string;
+        quantity?: number;
+        participantId?: string;
+        userCouponId?: string;
+        promotionId?: string;
+        paymentActionType?: 'web_cashier' | 'mini_program';
+      }) => {
+        const gateway = await createGateway({ endpoint, insecure });
+        const result = await gateway.createOrder({
+          store_id: storeId,
+          variant_id: variantId,
+          access_token: accessToken,
+          org_id: orgId,
+          quantity,
+          participant_id: participantId,
+          user_coupon_id: userCouponId,
+          promotion_id: promotionId,
+          payment_action_type: paymentActionType
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
 
   return program;
 }
