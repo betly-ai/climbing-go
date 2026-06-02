@@ -66,7 +66,7 @@ describe('store gateway endpoint validation', () => {
 });
 
 describe('store gateway', () => {
-  it('requests a large default limit when no limit is provided', async () => {
+  it('requests the MCP default store limit when no limit is provided', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedLimit: number | undefined;
@@ -124,7 +124,7 @@ describe('store gateway', () => {
         count: 23
       }
     });
-    expect(requestedLimit).toBe(100);
+    expect(requestedLimit).toBe(20);
   });
 
   it('requests the standard product defaults when no product filters are provided', async () => {
