@@ -13,7 +13,7 @@ Use this skill only for Betly 一期公开产品能力：card 类型产品列表
 - 所有查询都通过 `climbing-go` 命令完成，不要绕过 CLI 直接请求 MCP
 - 只使用命令返回里的真实字段、门店 ID 和产品 ID，不要猜测或编造数据
 - 用户说自然语言时，先把问题归一成“查公开产品列表”，再选命令
-- 如果用户提到门店名但没有门店 ID，先用 `product list` 的 `--city` 和 `--store-search` 缩小范围
+- 如果用户提到门店名但没有门店 ID，使用 `product list` 的 `--city` 和 `--store-search` 缩小范围；CLI 会先查门店并把门店 ID 转给产品查询
 
 ## Scope
 
@@ -62,7 +62,7 @@ climbing-go product list --city 深圳 --store-search 香蕉 --search 月卡
 climbing-go product list --store-id <storeId>
 ```
 
-`product list` 默认会请求最多 100 条公开产品；显式传入 `--limit`/`--offset` 时才走分页。
+`product list` 默认会请求最多 20 条公开产品；显式传入 `--limit` 时可调整返回数量。
 
 ## Query Strategy
 
@@ -83,10 +83,10 @@ climbing-go product list --store-id <storeId>
 
 ## Output
 
-- `product list` 返回 JSON，重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
-- SKU 最小字段为 `id`、`name`、`price`、`original_price`
+- `product list` 返回 JSON，重点看 `data.products`、`data.products[].variants`、`data.products[].variants[].stores` 和 `data.count`
+- SKU 最小字段为 `id`、`name`、`price`、`original_price`、`stores`
 - 成功响应包含 `ok`、`tool`、`endpoint` 和 `data`
-- 回答价格时只引用 `data.products[].variants` 里真实存在的 SKU 字段；回答卡名、适用门店这类问题时，只引用 `data.products` 和 `data.store` 里真实存在的字段；如果返回里没有，就明确说当前公开数据未提供
+- 回答价格时只引用 `data.products[].variants` 里真实存在的 SKU 字段；回答卡名、适用门店这类问题时，只引用 `data.products` 和 `data.products[].variants[].stores` 里真实存在的字段；如果返回里没有，就明确说当前公开数据未提供
 
 ## Failure Handling
 

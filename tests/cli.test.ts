@@ -87,8 +87,21 @@ describe('CLI skeleton', () => {
         ? await runCli(['product', 'list', '--city', 'fixture-city', '--store-search', 'Fixture', '--search', 'Fixture Time'], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
-              async listStores() {
-                throw new Error('unused');
+              async listStores(args) {
+                expect(args).toEqual({
+                  city: 'fixture-city',
+                  search: 'Fixture',
+                  limit: 20
+                });
+                return {
+                  ok: true,
+                  tool: 'listStores',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    stores: [{ id: 'fixture-store-product', name: 'Fixture Product Store' }],
+                    count: 1
+                  }
+                };
               },
               async getStore() {
                 throw new Error('unused');
@@ -125,17 +138,65 @@ describe('CLI skeleton', () => {
 
     expect(result.exitCode).toBe(0);
     expect(receivedArgs).toEqual({
-      city: 'fixture-city',
-      storeSearch: 'Fixture',
-      search: 'Fixture Time',
-      storeId: undefined,
-      limit: undefined,
-      offset: undefined
+      storeIds: ['fixture-store-product'],
+      productTypes: ['card'],
+      keyword: 'Fixture Time',
+      limit: undefined
     });
     expect(result.stdout).toContain('"tool": "listProducts"');
     expect(result.stdout).toContain('"name": "Fixture Time Product"');
     expect(result.stdout).toContain('"id": "fixture-variant-time"');
     expect(result.stdout).toContain('"price": 456');
+  });
+
+  it('returns an empty product list when product store lookup has no matches', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let listProductsCalled = false;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['product', 'list', '--city', 'missing-city', '--store-search', 'Missing'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores(args) {
+                expect(args).toEqual({
+                  city: 'missing-city',
+                  search: 'Missing',
+                  limit: 20
+                });
+                return {
+                  ok: true,
+                  tool: 'listStores',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    stores: [],
+                    count: 0
+                  }
+                };
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts() {
+                listProductsCalled = true;
+                throw new Error('unused');
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(listProductsCalled).toBe(false);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      tool: 'listProducts',
+      endpoint: 'https://env.example.com/api/climbing/mcp',
+      data: {
+        products: [],
+        count: 0
+      }
+    });
   });
 
   it('rejects endpoints with disallowed scheme', async () => {

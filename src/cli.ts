@@ -22,6 +22,9 @@ export interface RunCliResult {
   stderr: string;
 }
 
+const PUBLIC_PRODUCT_TYPES = ['card'];
+const PRODUCT_STORE_LOOKUP_LIMIT = 20;
+
 function serializeCliError(error: unknown) {
   if (error instanceof EndpointValidationError) {
     return JSON.stringify(
@@ -247,13 +250,6 @@ export function createProgram(options: RunCliOptions = {}) {
       }
       return n;
     })
-    .option('--offset <number>', 'offset returned products (non-negative integer)', value => {
-      const n = Number.parseInt(value, 10);
-      if (Number.isNaN(n) || n < 0) {
-        throw new Error('--offset must be a non-negative integer');
-      }
-      return n;
-    })
     .action(
       async ({
         endpoint,
@@ -262,7 +258,6 @@ export function createProgram(options: RunCliOptions = {}) {
         storeSearch,
         search,
         limit,
-        offset,
         insecure
       }: {
         endpoint?: string;
@@ -271,7 +266,6 @@ export function createProgram(options: RunCliOptions = {}) {
         storeSearch?: string;
         search?: string;
         limit?: number;
-        offset?: number;
         insecure?: boolean;
       }) => {
         const config = await loadConfig(env);
@@ -287,13 +281,35 @@ export function createProgram(options: RunCliOptions = {}) {
 
         validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
         const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+
+        let storeIds = storeId ? [storeId] : undefined;
+        if (!storeIds && (city || storeSearch)) {
+          const storesResult = await gateway.listStores({
+            city,
+            search: storeSearch,
+            limit: PRODUCT_STORE_LOOKUP_LIMIT
+          });
+          storeIds = storesResult.data.stores.map(store => store.id);
+
+          if (storeIds.length === 0) {
+            writeOut(`${JSON.stringify({
+              ok: true,
+              tool: 'listProducts',
+              endpoint: storesResult.endpoint,
+              data: {
+                products: [],
+                count: 0
+              }
+            }, null, 2)}\n`);
+            return;
+          }
+        }
+
         const result = await gateway.listProducts({
-          storeId,
-          city,
-          storeSearch,
-          search,
-          limit,
-          offset
+          storeIds,
+          productTypes: PUBLIC_PRODUCT_TYPES,
+          keyword: search,
+          limit
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }

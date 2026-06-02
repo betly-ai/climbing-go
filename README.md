@@ -61,7 +61,7 @@ climbing-go product list --city 深圳 --store-search iN --search 月卡
 climbing-go product list --store-id <storeId> --search 次卡
 ```
 
-`product list` 当前仅返回公开 card 类型产品。
+`product list` 当前仅返回公开 card 类型产品；使用 `--city` 或 `--store-search` 时会先查询门店，再用门店 ID 查询产品。
 
 ## 你可以用它做什么
 
@@ -90,8 +90,8 @@ climbing-go product list --city 深圳 --store-search iN --search 月卡
 
 - `store list` 重点看 `data.stores` 和 `data.count`
 - `store get` 重点看 `data.store`
-- `product list` 重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
-- SKU 最小字段为 `id`、`name`、`price`、`original_price`
+- `product list` 重点看 `data.products`、`data.products[].variants`、`data.products[].variants[].stores` 和 `data.count`
+- SKU 最小字段为 `id`、`name`、`price`、`original_price`、`stores`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
 
 ## Skill

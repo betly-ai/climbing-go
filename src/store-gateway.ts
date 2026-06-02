@@ -21,12 +21,10 @@ export interface ProductRecord {
 }
 
 export interface ListProductsArgs {
-  storeId?: string;
-  city?: string;
-  storeSearch?: string;
-  search?: string;
+  storeIds?: string[];
+  productTypes?: string[];
+  keyword?: string;
   limit?: number;
-  offset?: number;
 }
 
 export interface StoreGateway {
@@ -96,7 +94,8 @@ interface JsonRpcSuccess {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
-const DEFAULT_PRODUCT_LIST_LIMIT = 100;
+const DEFAULT_PRODUCT_LIST_LIMIT = 20;
+const DEFAULT_PRODUCT_TYPES = ['card'];
 const MAX_ERROR_BODY_LENGTH = 512;
 
 function normalizeEndpoint(endpoint: string, allowInsecure = false) {
@@ -388,7 +387,11 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       const requestArgs =
         args.limit === undefined
           ? { ...args, limit: DEFAULT_PRODUCT_LIST_LIMIT }
-          : args;
+          : { ...args };
+
+      if (!requestArgs.productTypes?.length) {
+        requestArgs.productTypes = DEFAULT_PRODUCT_TYPES;
+      }
 
       const response = await callTool({
         endpoint: normalizedEndpoint,

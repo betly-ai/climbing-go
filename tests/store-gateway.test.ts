@@ -127,10 +127,11 @@ describe('store gateway', () => {
     expect(requestedLimit).toBe(100);
   });
 
-  it('requests a large default product limit when no limit is provided', async () => {
+  it('requests the standard product defaults when no product filters are provided', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedLimit: number | undefined;
+    let requestedProductTypes: string[] | undefined;
     let requestedTool: string | undefined;
 
     const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -139,11 +140,13 @@ describe('store gateway', () => {
           name?: string;
           arguments?: {
             limit?: number;
+            productTypes?: string[];
           };
         };
       };
       requestedTool = body.params?.name;
       requestedLimit = body.params?.arguments?.limit;
+      requestedProductTypes = body.params?.arguments?.productTypes;
 
       return new Response(
         JSON.stringify({
@@ -199,7 +202,8 @@ describe('store gateway', () => {
       }
     });
     expect(requestedTool).toBe('listProducts');
-    expect(requestedLimit).toBe(100);
+    expect(requestedLimit).toBe(20);
+    expect(requestedProductTypes).toEqual(['card']);
   });
 
   it('parses listStores MCP content into structured list data', async () => {
@@ -295,9 +299,17 @@ describe('store gateway', () => {
   it('parses listProducts MCP content into structured product data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedArgs: Record<string, unknown> | undefined;
 
-    const fetchMock = async () =>
-      new Response(
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          arguments?: Record<string, unknown>;
+        };
+      };
+      requestedArgs = body.params?.arguments;
+
+      return new Response(
         JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
@@ -330,12 +342,13 @@ describe('store gateway', () => {
           headers: { 'content-type': 'application/json' }
         }
       );
+    };
 
     const result =
       typeof createStoreGateway === 'function'
         ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).listProducts({
-            city: 'fixture-city',
-            storeSearch: 'Fixture'
+            storeIds: ['store-1'],
+            keyword: 'Fixture'
           })
         : null;
 
@@ -359,6 +372,12 @@ describe('store gateway', () => {
         ],
         count: 1
       }
+    });
+    expect(requestedArgs).toEqual({
+      storeIds: ['store-1'],
+      keyword: 'Fixture',
+      limit: 20,
+      productTypes: ['card']
     });
   });
 

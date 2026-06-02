@@ -77,7 +77,8 @@ describe('MCP stdio server', () => {
     const productResult = await client.callTool({
       name: 'listProducts',
       arguments: {
-        search: '月度'
+        productTypes: ['card'],
+        keyword: '月度'
       }
     });
 
