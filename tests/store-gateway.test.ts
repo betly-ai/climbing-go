@@ -66,7 +66,7 @@ describe('store gateway endpoint validation', () => {
 });
 
 describe('store gateway', () => {
-  it('requests a large default limit when no limit is provided', async () => {
+  it('requests the MCP default store limit when no limit is provided', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedLimit: number | undefined;
@@ -124,10 +124,10 @@ describe('store gateway', () => {
         count: 23
       }
     });
-    expect(requestedLimit).toBe(100);
+    expect(requestedLimit).toBe(20);
   });
 
-  it('requests a large default product limit when no limit is provided', async () => {
+  it('requests the standard product defaults when no product filters are provided', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedLimit: number | undefined;
@@ -199,7 +199,7 @@ describe('store gateway', () => {
       }
     });
     expect(requestedTool).toBe('listProducts');
-    expect(requestedLimit).toBe(100);
+    expect(requestedLimit).toBe(20);
   });
 
   it('parses listStores MCP content into structured list data', async () => {
@@ -295,9 +295,17 @@ describe('store gateway', () => {
   it('parses listProducts MCP content into structured product data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedArgs: unknown;
 
-    const fetchMock = async () =>
-      new Response(
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          arguments?: unknown;
+        };
+      };
+      requestedArgs = body.params?.arguments;
+
+      return new Response(
         JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
@@ -330,15 +338,23 @@ describe('store gateway', () => {
           headers: { 'content-type': 'application/json' }
         }
       );
+    };
 
     const result =
       typeof createStoreGateway === 'function'
         ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).listProducts({
-            city: 'fixture-city',
-            storeSearch: 'Fixture'
+            storeIds: ['store-1'],
+            keyword: 'Fixture',
+            productTypes: ['card']
           })
         : null;
 
+    expect(requestedArgs).toEqual({
+      storeIds: ['store-1'],
+      productTypes: ['card'],
+      keyword: 'Fixture',
+      limit: 20
+    });
     expect(result).toEqual({
       ok: true,
       tool: 'listProducts',
@@ -444,11 +460,53 @@ describe('store gateway', () => {
     });
   });
 
+  it('maps conversation tool JSON error payloads to service errors', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  success: false,
+                  code: 'CONVERSATION_AGENT_TOKEN_REQUIRED',
+                  message: '缺少登录 MCP 返回的 accessToken',
+                  http_status: 401
+                })
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.previewAlipayOrder({
+      storeId: 'fixture-store',
+      variantId: 'fixture-variant'
+    })).rejects.toMatchObject({
+      code: 'CONVERSATION_AGENT_TOKEN_REQUIRED',
+      message: '缺少登录 MCP 返回的 accessToken',
+      status: 401
+    });
+  });
+
   it('calls preview-alipay-order and parses structured preview data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedTool: string | undefined;
     let requestedArgs: unknown;
+    let requestedHeaders: Headers | undefined;
 
     const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as {
@@ -459,6 +517,7 @@ describe('store gateway', () => {
       };
       requestedTool = body.params?.name;
       requestedArgs = body.params?.arguments;
+      requestedHeaders = new Headers(init?.headers);
 
       return new Response(
         JSON.stringify({
@@ -501,7 +560,7 @@ describe('store gateway', () => {
       typeof createStoreGateway === 'function'
         ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).previewAlipayOrder({
             orgId: 'fixture-org',
-            mobile: '13800138000',
+            accessToken: 'fixture-access-token',
             storeId: 'fixture-store',
             variantId: 'fixture-variant',
             quantity: 1
@@ -509,9 +568,9 @@ describe('store gateway', () => {
         : null;
 
     expect(requestedTool).toBe('preview-alipay-order');
+    expect(requestedHeaders?.get('X-ORG-ID')).toBe('fixture-org');
+    expect(requestedHeaders?.get('Authorization')).toBe('Bearer fixture-access-token');
     expect(requestedArgs).toEqual({
-      org_id: 'fixture-org',
-      mobile: '13800138000',
       store_id: 'fixture-store',
       variant_id: 'fixture-variant',
       quantity: 1
@@ -546,6 +605,7 @@ describe('store gateway', () => {
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedTool: string | undefined;
     let requestedArgs: unknown;
+    let requestedHeaders: Headers | undefined;
 
     const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as {
@@ -556,6 +616,7 @@ describe('store gateway', () => {
       };
       requestedTool = body.params?.name;
       requestedArgs = body.params?.arguments;
+      requestedHeaders = new Headers(init?.headers);
 
       return new Response(
         JSON.stringify({
@@ -581,7 +642,7 @@ describe('store gateway', () => {
                   },
                   payment_action: {
                     type: 'web_cashier',
-                    payment_url: 'https://api.example.com/api/conversation-pay/redirect/fixture-token'
+                    payment_url: 'https://api.example.com/api/conversation-agent/pay/redirect/fixture-token'
                   }
                 })
               }
@@ -599,7 +660,7 @@ describe('store gateway', () => {
       typeof createStoreGateway === 'function'
         ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).createAlipayPendingOrder({
             orgId: 'fixture-org',
-            mobile: '13800138000',
+            accessToken: 'fixture-access-token',
             storeId: 'fixture-store',
             variantId: 'fixture-variant',
             quantity: 1,
@@ -608,9 +669,9 @@ describe('store gateway', () => {
         : null;
 
     expect(requestedTool).toBe('create-alipay-pending-order');
+    expect(requestedHeaders?.get('X-ORG-ID')).toBe('fixture-org');
+    expect(requestedHeaders?.get('Authorization')).toBe('Bearer fixture-access-token');
     expect(requestedArgs).toEqual({
-      org_id: 'fixture-org',
-      mobile: '13800138000',
       store_id: 'fixture-store',
       variant_id: 'fixture-variant',
       quantity: 1,
@@ -636,7 +697,7 @@ describe('store gateway', () => {
         },
         payment_action: {
           type: 'web_cashier',
-          payment_url: 'https://api.example.com/api/conversation-pay/redirect/fixture-token'
+          payment_url: 'https://api.example.com/api/conversation-agent/pay/redirect/fixture-token'
         }
       }
     });
@@ -670,7 +731,7 @@ describe('store gateway', () => {
 
     await expect(gateway?.createAlipayPendingOrder({
       orgId: 'fixture-org',
-      mobile: '13800138000',
+      accessToken: 'fixture-access-token',
       storeId: 'fixture-store',
       variantId: 'fixture-variant'
     })).rejects.toMatchObject({

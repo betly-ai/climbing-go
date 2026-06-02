@@ -104,6 +104,7 @@ describe('CLI skeleton', () => {
   it('runs product list with resolved endpoint output', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
+    let receivedStoreArgs: unknown;
     let receivedArgs: unknown;
 
     const result =
@@ -111,8 +112,17 @@ describe('CLI skeleton', () => {
         ? await runCli(['product', 'list', '--city', 'fixture-city', '--store-search', 'Fixture', '--search', 'Fixture Time'], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
-              async listStores() {
-                throw new Error('unused');
+              async listStores(args) {
+                receivedStoreArgs = args;
+                return {
+                  ok: true,
+                  tool: 'listStores',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    stores: [{ id: 'fixture-store-product', name: 'Fixture Product Store' }],
+                    count: 1
+                  }
+                };
               },
               async getStore() {
                 throw new Error('unused');
@@ -148,13 +158,16 @@ describe('CLI skeleton', () => {
         : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
 
     expect(result.exitCode).toBe(0);
-    expect(receivedArgs).toEqual({
+    expect(receivedStoreArgs).toEqual({
       city: 'fixture-city',
-      storeSearch: 'Fixture',
-      search: 'Fixture Time',
-      storeId: undefined,
-      limit: undefined,
-      offset: undefined
+      search: 'Fixture',
+      limit: 20
+    });
+    expect(receivedArgs).toEqual({
+      storeIds: ['fixture-store-product'],
+      productTypes: ['card'],
+      keyword: 'Fixture Time',
+      limit: undefined
     });
     expect(result.stdout).toContain('"tool": "listProducts"');
     expect(result.stdout).toContain('"name": "Fixture Time Product"');
@@ -237,11 +250,31 @@ describe('CLI skeleton', () => {
   it('runs order preview with conversation pay arguments', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
+    let receivedLoginArgs: unknown;
     let receivedArgs: unknown;
 
     const result =
       typeof runCli === 'function'
-        ? await runCli(['order', 'preview', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant'], {
+        ? await runCli([
+            'order',
+            'preview',
+            '--org-id',
+            'fixture-org',
+            '--api-key',
+            'fixture-api-key',
+            '--api-secret',
+            'fixture-public-key',
+            '--secret-version',
+            'v1',
+            '--mobile',
+            '13800138000',
+            '--encrypted-phone',
+            'fixture-ciphertext',
+            '--store-id',
+            'fixture-store',
+            '--variant-id',
+            'fixture-variant'
+          ], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
               async listStores() {
@@ -252,6 +285,19 @@ describe('CLI skeleton', () => {
               },
               async listProducts() {
                 throw new Error('unused');
+              },
+              async conversationAgentLogin(args) {
+                receivedLoginArgs = args;
+                return {
+                  ok: true,
+                  tool: 'conversation-agent-login',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    access_token: 'fixture-access-token',
+                    token_type: 'Bearer',
+                    expires_in: 300
+                  }
+                };
               },
               async previewAlipayOrder(args) {
                 receivedArgs = args;
@@ -286,9 +332,16 @@ describe('CLI skeleton', () => {
         : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
 
     expect(result.exitCode).toBe(0);
+    expect(receivedLoginArgs).toEqual({
+      orgId: 'fixture-org',
+      apiKey: 'fixture-api-key',
+      apiSecret: 'fixture-public-key',
+      secretVersion: 'v1',
+      encryptedPhone: 'fixture-ciphertext'
+    });
     expect(receivedArgs).toEqual({
       orgId: 'fixture-org',
-      mobile: '13800138000',
+      accessToken: 'fixture-access-token',
       storeId: 'fixture-store',
       variantId: 'fixture-variant',
       quantity: undefined,
@@ -303,11 +356,35 @@ describe('CLI skeleton', () => {
   it('runs order create with explicit quantity and payment action type', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
+    let receivedLoginArgs: unknown;
     let receivedArgs: unknown;
 
     const result =
       typeof runCli === 'function'
-        ? await runCli(['order', 'create', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant', '--quantity', '2', '--payment-action-type', 'mini_program'], {
+        ? await runCli([
+            'order',
+            'create',
+            '--org-id',
+            'fixture-org',
+            '--api-key',
+            'fixture-api-key',
+            '--api-secret',
+            'fixture-public-key',
+            '--secret-version',
+            'v1',
+            '--mobile',
+            '13800138000',
+            '--encrypted-phone',
+            'fixture-ciphertext',
+            '--store-id',
+            'fixture-store',
+            '--variant-id',
+            'fixture-variant',
+            '--quantity',
+            '2',
+            '--payment-action-type',
+            'mini_program'
+          ], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
               async listStores() {
@@ -318,6 +395,19 @@ describe('CLI skeleton', () => {
               },
               async listProducts() {
                 throw new Error('unused');
+              },
+              async conversationAgentLogin(args) {
+                receivedLoginArgs = args;
+                return {
+                  ok: true,
+                  tool: 'conversation-agent-login',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    access_token: 'fixture-access-token',
+                    token_type: 'Bearer',
+                    expires_in: 300
+                  }
+                };
               },
               async previewAlipayOrder() {
                 throw new Error('unused');
@@ -355,9 +445,16 @@ describe('CLI skeleton', () => {
         : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
 
     expect(result.exitCode).toBe(0);
+    expect(receivedLoginArgs).toEqual({
+      orgId: 'fixture-org',
+      apiKey: 'fixture-api-key',
+      apiSecret: 'fixture-public-key',
+      secretVersion: 'v1',
+      encryptedPhone: 'fixture-ciphertext'
+    });
     expect(receivedArgs).toEqual({
       orgId: 'fixture-org',
-      mobile: '13800138000',
+      accessToken: 'fixture-access-token',
       storeId: 'fixture-store',
       variantId: 'fixture-variant',
       quantity: 2,
@@ -376,7 +473,26 @@ describe('CLI skeleton', () => {
 
     const result =
       typeof runCli === 'function'
-        ? await runCli(['order', 'create', '--org-id', 'fixture-org', '--mobile', '13800138000', '--store-id', 'fixture-store', '--variant-id', 'fixture-variant', '--quantity', '0'], {
+        ? await runCli([
+            'order',
+            'create',
+            '--org-id',
+            'fixture-org',
+            '--api-key',
+            'fixture-api-key',
+            '--api-secret',
+            'fixture-public-key',
+            '--secret-version',
+            'v1',
+            '--encrypted-phone',
+            'fixture-ciphertext',
+            '--store-id',
+            'fixture-store',
+            '--variant-id',
+            'fixture-variant',
+            '--quantity',
+            '0'
+          ], {
             env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
             gatewayFactory: () => ({
               async listStores() {

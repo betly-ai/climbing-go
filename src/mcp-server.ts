@@ -137,19 +137,30 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
         count?: number;
       }>(fixtureDir, 'product-list.json');
 
+      if (args.storeIds?.length && payload.store && !args.storeIds.includes(payload.store.id)) {
+        return {
+          store: payload.store,
+          products: [],
+          count: 0
+        };
+      }
+
       const filtered = (payload.products ?? []).filter(product => {
-        if (args.search && !product.name.toLowerCase().includes(args.search.toLowerCase())) {
+        if (args.productTypes?.length && !args.productTypes.includes(String(product.type ?? ''))) {
+          return false;
+        }
+
+        if (args.keyword && !product.name.toLowerCase().includes(args.keyword.toLowerCase())) {
           return false;
         }
 
         return true;
       });
-      const start = Math.max(args.offset ?? 0, 0);
-      const end = args.limit ? start + Math.max(args.limit, 0) : undefined;
+      const end = args.limit ? Math.max(args.limit, 0) : undefined;
 
       return {
         store: payload.store,
-        products: filtered.slice(start, end),
+        products: filtered.slice(0, end),
         count: filtered.length
       };
     },
@@ -226,8 +237,8 @@ function normalizeConversationAgentLoginArgs(args: {
 }
 
 function normalizePreviewAlipayOrderArgs(args: {
-  org_id: string;
-  mobile: string;
+  org_id?: string;
+  access_token?: string;
   store_id: string;
   variant_id: string;
   quantity?: number;
@@ -237,7 +248,7 @@ function normalizePreviewAlipayOrderArgs(args: {
 }): PreviewAlipayOrderArgs {
   return {
     orgId: args.org_id,
-    mobile: args.mobile,
+    accessToken: args.access_token,
     storeId: args.store_id,
     variantId: args.variant_id,
     quantity: args.quantity,
@@ -248,8 +259,8 @@ function normalizePreviewAlipayOrderArgs(args: {
 }
 
 function normalizeCreateAlipayPendingOrderArgs(args: {
-  org_id: string;
-  mobile: string;
+  org_id?: string;
+  access_token?: string;
   store_id: string;
   variant_id: string;
   quantity?: number;
@@ -366,12 +377,10 @@ export async function createMcpServer(env: EnvMap = process.env) {
     {
       description: 'List public Banana Climbing products for a store or city.',
       inputSchema: {
-        storeId: z.string().optional().describe('Store id. Takes precedence over city.'),
-        city: z.string().optional().describe('Select a store by city when storeId is not provided.'),
-        storeSearch: z.string().optional().describe('Search store name when storeId is not provided.'),
-        search: z.string().optional().describe('Filter products by keyword in the product name.'),
-        limit: z.number().int().nonnegative().optional().describe('Limit the number of returned products.'),
-        offset: z.number().int().nonnegative().optional().describe('Skip this many products before returning results.')
+        storeIds: z.array(z.string()).optional().describe('Candidate store ids. Omit when the user has not selected a store.'),
+        productTypes: z.array(z.string()).optional().describe('Product type filters, for example card.'),
+        keyword: z.string().optional().describe('Filter products by keyword in the product or SKU name.'),
+        limit: z.number().int().nonnegative().optional().describe('Limit the number of returned products.')
       }
     },
     async (args) => createTextResult(await service.listProducts(args))
@@ -393,8 +402,8 @@ export async function createMcpServer(env: EnvMap = process.env) {
   );
 
   const conversationPayInputSchema = {
-    org_id: z.string().min(1).describe('Organization id.'),
-    mobile: z.string().min(1).describe('Payer mobile number.'),
+    org_id: z.string().optional().describe('Organization id. In HTTP MCP this is injected as X-ORG-ID.'),
+    access_token: z.string().optional().describe('Access token returned by conversation-agent-login. HTTP MCP prefers Authorization header.'),
     store_id: z.string().min(1).describe('Store id.'),
     variant_id: z.string().min(1).describe('Product variant id from products[].variants[].id.'),
     quantity: z.number().int().positive().optional().describe('Item quantity. Defaults to 1.'),

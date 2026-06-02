@@ -1,3 +1,4 @@
+import { constants, publicEncrypt } from 'node:crypto';
 import { Command, CommanderError } from 'commander';
 
 import { getConfigPath, loadConfig, saveConfig, type EnvMap } from './config.js';
@@ -30,6 +31,72 @@ function parsePositiveInteger(value: string, optionName: string) {
   }
 
   return parsed;
+}
+
+function decodeConversationAgentPublicKey(apiSecret: string) {
+  const trimmed = apiSecret.trim();
+  const decoded = Buffer.from(trimmed, 'base64url').toString('utf8');
+
+  if (decoded.includes('BEGIN PUBLIC KEY')) {
+    return decoded;
+  }
+
+  return trimmed.replace(/\\n/g, '\n');
+}
+
+function encryptMobile(mobile: string, apiSecret: string) {
+  const publicKey = decodeConversationAgentPublicKey(apiSecret);
+
+  return publicEncrypt(
+    {
+      key: publicKey,
+      padding: constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256'
+    },
+    Buffer.from(mobile, 'utf8')
+  ).toString('base64url');
+}
+
+function resolveEncryptedPhone(input: {
+  mobile?: string;
+  apiSecret: string;
+  encryptedPhone?: string;
+}) {
+  if (input.encryptedPhone?.trim()) {
+    return input.encryptedPhone.trim();
+  }
+
+  if (!input.mobile?.trim()) {
+    throw new Error('--mobile or --encrypted-phone is required');
+  }
+
+  return encryptMobile(input.mobile.trim(), input.apiSecret);
+}
+
+async function loginConversationAgent(
+  gateway: StoreGateway,
+  input: {
+    orgId: string;
+    apiKey: string;
+    apiSecret: string;
+    secretVersion: string;
+    mobile?: string;
+    encryptedPhone?: string;
+  }
+) {
+  const login = await gateway.conversationAgentLogin({
+    orgId: input.orgId,
+    apiKey: input.apiKey,
+    apiSecret: input.apiSecret,
+    secretVersion: input.secretVersion,
+    encryptedPhone: resolveEncryptedPhone({
+      mobile: input.mobile,
+      apiSecret: input.apiSecret,
+      encryptedPhone: input.encryptedPhone
+    })
+  });
+
+  return login.data.access_token;
 }
 
 function serializeCliError(error: unknown) {
@@ -259,13 +326,6 @@ export function createProgram(options: RunCliOptions = {}) {
       }
       return n;
     })
-    .option('--offset <number>', 'offset returned products (non-negative integer)', value => {
-      const n = Number.parseInt(value, 10);
-      if (Number.isNaN(n) || n < 0) {
-        throw new Error('--offset must be a non-negative integer');
-      }
-      return n;
-    })
     .action(
       async ({
         endpoint,
@@ -274,7 +334,6 @@ export function createProgram(options: RunCliOptions = {}) {
         storeSearch,
         search,
         limit,
-        offset,
         insecure
       }: {
         endpoint?: string;
@@ -283,7 +342,6 @@ export function createProgram(options: RunCliOptions = {}) {
         storeSearch?: string;
         search?: string;
         limit?: number;
-        offset?: number;
         insecure?: boolean;
       }) => {
         const config = await loadConfig(env);
@@ -299,13 +357,31 @@ export function createProgram(options: RunCliOptions = {}) {
 
         validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
         const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        let storeIds = storeId ? [storeId] : undefined;
+
+        if (!storeIds && (city || storeSearch)) {
+          const storesResult = await gateway.listStores({ city, search: storeSearch, limit: 20 });
+          storeIds = storesResult.data.stores.map(store => store.id);
+
+          if (storeIds.length === 0) {
+            writeOut(`${JSON.stringify({
+              ok: true,
+              tool: 'listProducts',
+              endpoint: storesResult.endpoint,
+              data: {
+                products: [],
+                count: 0
+              }
+            }, null, 2)}\n`);
+            return;
+          }
+        }
+
         const result = await gateway.listProducts({
-          storeId,
-          city,
-          storeSearch,
-          search,
-          limit,
-          offset
+          storeIds,
+          productTypes: ['card'],
+          keyword: search,
+          limit
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }
@@ -318,7 +394,8 @@ export function createProgram(options: RunCliOptions = {}) {
     .requiredOption('--api-key <apiKey>', 'conversation agent api key')
     .requiredOption('--api-secret <apiSecret>', 'conversation agent public key')
     .requiredOption('--secret-version <version>', 'conversation agent secret version')
-    .requiredOption('--encrypted-phone <ciphertext>', 'encrypted mobile phone ciphertext')
+    .option('--mobile <mobile>', 'plain mobile phone to encrypt locally')
+    .option('--encrypted-phone <ciphertext>', 'encrypted mobile phone ciphertext')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .action(
@@ -328,6 +405,7 @@ export function createProgram(options: RunCliOptions = {}) {
         apiKey,
         apiSecret,
         secretVersion,
+        mobile,
         encryptedPhone,
         insecure
       }: {
@@ -336,7 +414,8 @@ export function createProgram(options: RunCliOptions = {}) {
         apiKey: string;
         apiSecret: string;
         secretVersion: string;
-        encryptedPhone: string;
+        mobile?: string;
+        encryptedPhone?: string;
         insecure?: boolean;
       }) => {
         const config = await loadConfig(env);
@@ -357,7 +436,7 @@ export function createProgram(options: RunCliOptions = {}) {
           apiKey,
           apiSecret,
           secretVersion,
-          encryptedPhone
+          encryptedPhone: resolveEncryptedPhone({ mobile, apiSecret, encryptedPhone })
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }
@@ -367,7 +446,11 @@ export function createProgram(options: RunCliOptions = {}) {
     .command('preview')
     .description('Preview an Alipay card product order')
     .requiredOption('--org-id <orgId>', 'organization id')
-    .requiredOption('--mobile <mobile>', 'payer mobile number')
+    .requiredOption('--api-key <apiKey>', 'conversation agent api key')
+    .requiredOption('--api-secret <apiSecret>', 'conversation agent public key')
+    .requiredOption('--secret-version <version>', 'conversation agent secret version')
+    .option('--mobile <mobile>', 'plain payer mobile number to encrypt locally')
+    .option('--encrypted-phone <ciphertext>', 'encrypted mobile phone ciphertext')
     .requiredOption('--store-id <storeId>', 'store id')
     .requiredOption('--variant-id <variantId>', 'product variant id from products[].variants[].id')
     .option('--quantity <number>', 'quantity, defaults to 1', value => parsePositiveInteger(value, '--quantity'))
@@ -380,7 +463,11 @@ export function createProgram(options: RunCliOptions = {}) {
       async ({
         endpoint,
         orgId,
+        apiKey,
+        apiSecret,
+        secretVersion,
         mobile,
+        encryptedPhone,
         storeId,
         variantId,
         quantity,
@@ -391,7 +478,11 @@ export function createProgram(options: RunCliOptions = {}) {
       }: {
         endpoint?: string;
         orgId: string;
-        mobile: string;
+        apiKey: string;
+        apiSecret: string;
+        secretVersion: string;
+        mobile?: string;
+        encryptedPhone?: string;
         storeId: string;
         variantId: string;
         quantity?: number;
@@ -413,9 +504,17 @@ export function createProgram(options: RunCliOptions = {}) {
 
         validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
         const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const accessToken = await loginConversationAgent(gateway, {
+          orgId,
+          apiKey,
+          apiSecret,
+          secretVersion,
+          mobile,
+          encryptedPhone
+        });
         const result = await gateway.previewAlipayOrder({
           orgId,
-          mobile,
+          accessToken,
           storeId,
           variantId,
           quantity,
@@ -431,7 +530,11 @@ export function createProgram(options: RunCliOptions = {}) {
     .command('create')
     .description('Create an Alipay pending order')
     .requiredOption('--org-id <orgId>', 'organization id')
-    .requiredOption('--mobile <mobile>', 'payer mobile number')
+    .requiredOption('--api-key <apiKey>', 'conversation agent api key')
+    .requiredOption('--api-secret <apiSecret>', 'conversation agent public key')
+    .requiredOption('--secret-version <version>', 'conversation agent secret version')
+    .option('--mobile <mobile>', 'plain payer mobile number to encrypt locally')
+    .option('--encrypted-phone <ciphertext>', 'encrypted mobile phone ciphertext')
     .requiredOption('--store-id <storeId>', 'store id')
     .requiredOption('--variant-id <variantId>', 'product variant id from products[].variants[].id')
     .option('--quantity <number>', 'quantity, defaults to 1', value => parsePositiveInteger(value, '--quantity'))
@@ -445,7 +548,11 @@ export function createProgram(options: RunCliOptions = {}) {
       async ({
         endpoint,
         orgId,
+        apiKey,
+        apiSecret,
+        secretVersion,
         mobile,
+        encryptedPhone,
         storeId,
         variantId,
         quantity,
@@ -457,7 +564,11 @@ export function createProgram(options: RunCliOptions = {}) {
       }: {
         endpoint?: string;
         orgId: string;
-        mobile: string;
+        apiKey: string;
+        apiSecret: string;
+        secretVersion: string;
+        mobile?: string;
+        encryptedPhone?: string;
         storeId: string;
         variantId: string;
         quantity?: number;
@@ -484,9 +595,17 @@ export function createProgram(options: RunCliOptions = {}) {
 
         validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
         const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const accessToken = await loginConversationAgent(gateway, {
+          orgId,
+          apiKey,
+          apiSecret,
+          secretVersion,
+          mobile,
+          encryptedPhone
+        });
         const result = await gateway.createAlipayPendingOrder({
           orgId,
-          mobile,
+          accessToken,
           storeId,
           variantId,
           quantity,

@@ -21,17 +21,15 @@ export interface ProductRecord {
 }
 
 export interface ListProductsArgs {
-  storeId?: string;
-  city?: string;
-  storeSearch?: string;
-  search?: string;
+  storeIds?: string[];
+  productTypes?: string[];
+  keyword?: string;
   limit?: number;
-  offset?: number;
 }
 
 export interface PreviewAlipayOrderArgs {
-  orgId: string;
-  mobile: string;
+  orgId?: string;
+  accessToken?: string;
   storeId: string;
   variantId: string;
   quantity?: number;
@@ -158,8 +156,9 @@ interface JsonRpcSuccess {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_STORE_LIST_LIMIT = 100;
-const DEFAULT_PRODUCT_LIST_LIMIT = 100;
+const DEFAULT_STORE_LIST_LIMIT = 20;
+const DEFAULT_PRODUCT_LIST_LIMIT = 20;
+const DEFAULT_PRODUCT_TYPES = ['card'];
 const MAX_ERROR_BODY_LENGTH = 512;
 
 function normalizeEndpoint(endpoint: string, allowInsecure = false) {
@@ -289,7 +288,17 @@ function parseToolJson(text: string, toolName: string, endpoint: string) {
       });
     }
 
-    return data as Record<string, unknown>;
+    const record = data as Record<string, unknown>;
+    if (record.success === false) {
+      throw new StoreGatewayError({
+        code: typeof record.code === 'string' ? record.code : 'service_error',
+        message: typeof record.message === 'string' ? record.message : `${toolName} request failed`,
+        endpoint,
+        status: typeof record.http_status === 'number' ? record.http_status : undefined
+      });
+    }
+
+    return record;
   } catch (error) {
     if (error instanceof StoreGatewayError) {
       throw error;
@@ -369,8 +378,6 @@ async function callTool(
 
 function toConversationPayArgs(args: PreviewAlipayOrderArgs | CreateAlipayPendingOrderArgs) {
   const payload: Record<string, unknown> = {
-    org_id: args.orgId,
-    mobile: args.mobile,
     store_id: args.storeId,
     variant_id: args.variantId
   };
@@ -386,6 +393,18 @@ function toConversationPayArgs(args: PreviewAlipayOrderArgs | CreateAlipayPendin
   return payload;
 }
 
+function toListProductsArgs(args: ListProductsArgs) {
+  const payload: Record<string, unknown> = {
+    productTypes: args.productTypes ?? DEFAULT_PRODUCT_TYPES
+  };
+
+  if (args.storeIds !== undefined) payload.storeIds = args.storeIds;
+  if (args.keyword !== undefined) payload.keyword = args.keyword;
+  if (args.limit !== undefined) payload.limit = args.limit;
+
+  return payload;
+}
+
 function toConversationAgentLoginHeaders(args: ConversationAgentLoginArgs) {
   return {
     'X-ORG-ID': args.orgId,
@@ -394,6 +413,13 @@ function toConversationAgentLoginHeaders(args: ConversationAgentLoginArgs) {
     'X-SECRET-VERSION': args.secretVersion,
     'X-Encryped-PHONE': args.encryptedPhone
   };
+}
+
+function toConversationPayHeaders(args: PreviewAlipayOrderArgs | CreateAlipayPendingOrderArgs) {
+  const headers: Record<string, string> = {};
+  if (args.orgId) headers['X-ORG-ID'] = args.orgId;
+  if (args.accessToken) headers.Authorization = `Bearer ${args.accessToken}`;
+  return headers;
 }
 
 export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): StoreGateway {
@@ -519,7 +545,7 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'listProducts',
-        args: requestArgs,
+        args: toListProductsArgs(requestArgs),
         fetchImpl,
         timeoutMs
       });
@@ -619,6 +645,7 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         endpoint: normalizedEndpoint,
         toolName: 'preview-alipay-order',
         args: toConversationPayArgs(args),
+        headers: toConversationPayHeaders(args),
         fetchImpl,
         timeoutMs
       });
@@ -646,6 +673,7 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         endpoint: normalizedEndpoint,
         toolName: 'create-alipay-pending-order',
         args: toConversationPayArgs(args),
+        headers: toConversationPayHeaders(args),
         fetchImpl,
         timeoutMs
       });

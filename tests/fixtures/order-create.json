@@ -21,6 +21,6 @@
     "cashier_url": "https://openapi-sandbox.dl.alipaydev.com/gateway.do?fixture=1",
     "cashier_form": null,
     "return_url": null,
-    "payment_url": "https://api.example.com/api/conversation-pay/redirect/fixture-token"
+    "payment_url": "https://api.example.com/api/conversation-agent/pay/redirect/fixture-token"
   }
 }

@@ -63,7 +63,7 @@ climbing-go product list --city 深圳 --store-search 香蕉 --search 月卡
 climbing-go product list --store-id <storeId>
 ```
 
-`product list` 默认会请求最多 100 条公开产品；显式传入 `--limit`/`--offset` 时才走分页。
+`product list` 默认会请求最多 20 条公开产品；显式传入 `--limit` 时可调整返回数量。
 
 ## Query Strategy
 

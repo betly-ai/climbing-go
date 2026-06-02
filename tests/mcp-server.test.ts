@@ -77,7 +77,7 @@ describe('MCP stdio server', () => {
     const productResult = await client.callTool({
       name: 'listProducts',
       arguments: {
-        search: '月度'
+        keyword: '月度'
       }
     });
 
@@ -85,7 +85,7 @@ describe('MCP stdio server', () => {
       name: 'preview-alipay-order',
       arguments: {
         org_id: 'fixture-org',
-        mobile: '13800138000',
+        access_token: 'fixture-access-token',
         store_id: '541aaea2-a48a-4b1d-8637-51cf4c54c7d4',
         variant_id: '3545a29b-58dc-4d03-8a67-529fbdc248fb'
       }
@@ -106,7 +106,7 @@ describe('MCP stdio server', () => {
       name: 'create-alipay-pending-order',
       arguments: {
         org_id: 'fixture-org',
-        mobile: '13800138000',
+        access_token: 'fixture-access-token',
         store_id: '541aaea2-a48a-4b1d-8637-51cf4c54c7d4',
         variant_id: '3545a29b-58dc-4d03-8a67-529fbdc248fb'
       }

@@ -51,7 +51,7 @@ climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 ```
 
-`store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时会按传入分页参数返回。
+`store list` 默认会请求最多 20 条公开门店；显式传入 `--limit`/`--offset` 时会按传入分页参数返回。
 
 也可以查询门店可售公开产品：
 
@@ -67,6 +67,7 @@ climbing-go product list --store-id <storeId> --search 次卡
 
 ```bash
 climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --encrypted-phone <ciphertext>
+climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --mobile <mobile>
 ```
 
 其中 `--api-secret` 对应平台侧加密手机号使用的公钥，会作为 `X-API-SECRET` 转发给远端 MCP。
@@ -74,12 +75,12 @@ climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicK
 选择产品返回中的 `data.products[].variants[].id` 后，可以创建订单并发起支付宝支付：
 
 ```bash
-climbing-go order preview --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
-climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
-climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId> --quantity 2
+climbing-go order preview --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --encrypted-phone <ciphertext> --store-id <storeId> --variant-id <variantId> --quantity 2
 ```
 
-`--quantity` 不传时默认购买 1 份。当前只支持 card 类型产品和支付宝支付。
+`order preview/create` 会先通过登录 MCP 换取短期 `access_token`，再调用下单 MCP。`--quantity` 不传时默认购买 1 份。当前只支持 card 类型产品和支付宝支付。
 
 ## 你可以用它做什么
 
@@ -103,8 +104,8 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 深圳 --store-search iN
 climbing-go product list --city 深圳 --store-search iN --search 月卡
 climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --encrypted-phone <ciphertext>
-climbing-go order preview --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
-climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order preview --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --mobile <mobile> --store-id <storeId> --variant-id <variantId>
+climbing-go order create --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --mobile <mobile> --store-id <storeId> --variant-id <variantId>
 ```
 
 ## 返回结果怎么看
@@ -124,7 +125,7 @@ climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId>
 
 `climbing-go` 不读取支付宝密钥，也不直接接入支付宝 SDK。
 
-订单创建会调用远端 `climbing-mcp`，再由 Betly API 的 `/api/conversation-pay` 复用现有订单与支付宝支付服务。支付宝签名、支付链接生成、notify webhook 验签和订单入账都在 Betly API 内完成。
+订单创建会调用远端 `climbing-mcp`，再由 Betly API 的 `/api/conversation-agent/pay` 复用现有订单与支付宝支付服务。支付宝签名、支付链接生成、notify webhook 验签和订单入账都在 Betly API 内完成。
 
 `payment_action.payment_url` 是推荐展示给用户打开的支付入口。支付完成后的订单状态更新依赖支付宝 `notify_url` webhook；浏览器回跳页不作为入账依据。
 
