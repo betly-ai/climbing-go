@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/betly-ai/climbing-go/compare/v1.2.1...v1.3.0) (2026-06-02)
+
+
+### Features
+
+* **mcp:** 增加产品查询和支付对接工具 ([#9](https://github.com/betly-ai/climbing-go/issues/9)) ([9ec57de](https://github.com/betly-ai/climbing-go/commit/9ec57de2282c14bf165bb7c5bc32d954f0407e03))
+
 ## [1.2.1](https://github.com/betly-ai/climbing-go/compare/v1.2.0...v1.2.1) (2026-04-17)
 
 
