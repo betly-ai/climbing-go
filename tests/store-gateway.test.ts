@@ -362,6 +362,88 @@ describe('store gateway', () => {
     });
   });
 
+  it('calls conversation-agent-login with auth headers and parses access token data', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedTool: string | undefined;
+    let requestedArgs: unknown;
+    let requestedHeaders: Headers | undefined;
+
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params?: {
+          name?: string;
+          arguments?: unknown;
+        };
+      };
+      requestedTool = body.params?.name;
+      requestedArgs = body.params?.arguments;
+      requestedHeaders = new Headers(init?.headers);
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  access_token: 'fixture-access-token',
+                  token_type: 'Bearer',
+                  expires_in: 300,
+                  user: {
+                    id: 'fixture-user',
+                    mobile: '138****8000',
+                    is_new_user: false
+                  }
+                })
+              }
+            ]
+          }
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+    };
+
+    const result =
+      typeof createStoreGateway === 'function'
+        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).conversationAgentLogin({
+            orgId: 'fixture-org',
+            apiKey: 'fixture-api-key',
+            apiSecret: 'fixture-public-key',
+            secretVersion: 'v1',
+            encryptedPhone: 'fixture-ciphertext'
+          })
+        : null;
+
+    expect(requestedTool).toBe('conversation-agent-login');
+    expect(requestedArgs).toEqual({});
+    expect(requestedHeaders?.get('X-ORG-ID')).toBe('fixture-org');
+    expect(requestedHeaders?.get('X-API-KEY')).toBe('fixture-api-key');
+    expect(requestedHeaders?.get('X-API-SECRET')).toBe('fixture-public-key');
+    expect(requestedHeaders?.get('X-SECRET-VERSION')).toBe('v1');
+    expect(requestedHeaders?.get('X-Encryped-PHONE')).toBe('fixture-ciphertext');
+    expect(result).toEqual({
+      ok: true,
+      tool: 'conversation-agent-login',
+      endpoint: 'https://example.com/base/api/climbing/mcp',
+      data: {
+        access_token: 'fixture-access-token',
+        token_type: 'Bearer',
+        expires_in: 300,
+        user: {
+          id: 'fixture-user',
+          mobile: '138****8000',
+          is_new_user: false
+        }
+      }
+    });
+  });
+
   it('calls preview-alipay-order and parses structured preview data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;

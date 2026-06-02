@@ -154,6 +154,7 @@ export function createProgram(options: RunCliOptions = {}) {
 
   const storeCommand = program.command('store').description('Query public climbing stores');
   const productCommand = program.command('product').description('Query public climbing products');
+  const authCommand = program.command('auth').description('Authenticate conversation agents');
   const orderCommand = program.command('order').description('Preview and create Alipay pending orders');
 
   program
@@ -305,6 +306,58 @@ export function createProgram(options: RunCliOptions = {}) {
           search,
           limit,
           offset
+        });
+        writeOut(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    );
+
+  authCommand
+    .command('login')
+    .description('Login through conversation agent encrypted mobile headers')
+    .requiredOption('--org-id <orgId>', 'organization id')
+    .requiredOption('--api-key <apiKey>', 'conversation agent api key')
+    .requiredOption('--api-secret <apiSecret>', 'conversation agent public key')
+    .requiredOption('--secret-version <version>', 'conversation agent secret version')
+    .requiredOption('--encrypted-phone <ciphertext>', 'encrypted mobile phone ciphertext')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .action(
+      async ({
+        endpoint,
+        orgId,
+        apiKey,
+        apiSecret,
+        secretVersion,
+        encryptedPhone,
+        insecure
+      }: {
+        endpoint?: string;
+        orgId: string;
+        apiKey: string;
+        apiSecret: string;
+        secretVersion: string;
+        encryptedPhone: string;
+        insecure?: boolean;
+      }) => {
+        const config = await loadConfig(env);
+        const resolvedEndpoint = resolveEndpoint({
+          cliEndpoint: endpoint,
+          configEndpoint: config.endpoint,
+          env
+        });
+
+        if (!resolvedEndpoint) {
+          throw new Error('No climbing MCP endpoint configured. Use --endpoint, CLIMBING_MCP_ENDPOINT, or "climbing-go config set endpoint <url>".');
+        }
+
+        validateEndpoint(resolvedEndpoint, { allowInsecure: insecure });
+        const gateway = gatewayFactory(resolvedEndpoint, { allowInsecure: insecure });
+        const result = await gateway.conversationAgentLogin({
+          orgId,
+          apiKey,
+          apiSecret,
+          secretVersion,
+          encryptedPhone
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }

@@ -8,6 +8,8 @@ import * as z from 'zod/v4';
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
 import {
+  type ConversationAgentLoginArgs,
+  type ConversationAgentLoginResult,
   type ConversationPayCreateResult,
   type ConversationPayPreviewResult,
   type CreateAlipayPendingOrderArgs,
@@ -36,6 +38,7 @@ interface StoreService {
   }>;
   previewAlipayOrder(args: PreviewAlipayOrderArgs): Promise<ConversationPayPreviewResult>;
   createAlipayPendingOrder(args: CreateAlipayPendingOrderArgs): Promise<ConversationPayCreateResult>;
+  conversationAgentLogin(args: ConversationAgentLoginArgs): Promise<ConversationAgentLoginResult>;
 }
 
 interface FixtureOrderVariant {
@@ -151,6 +154,19 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
       };
     },
 
+    async conversationAgentLogin() {
+      return {
+        access_token: 'fixture-access-token',
+        token_type: 'Bearer',
+        expires_in: 300,
+        user: {
+          id: 'fixture-user',
+          mobile: '138****8000',
+          is_new_user: false
+        }
+      };
+    },
+
     async previewAlipayOrder(args) {
       const preview = await resolveOrderPreview(args);
 
@@ -190,6 +206,22 @@ function createFixtureStoreService(fixtureDir: string): StoreService {
         assistant_message: `订单已创建，金额 ${preview.amount} 元。请在支付宝完成支付，支付成功后订单会自动更新。`
       };
     }
+  };
+}
+
+function normalizeConversationAgentLoginArgs(args: {
+  org_id: string;
+  api_key: string;
+  api_secret: string;
+  secret_version: string;
+  encrypted_phone: string;
+}): ConversationAgentLoginArgs {
+  return {
+    orgId: args.org_id,
+    apiKey: args.api_key,
+    apiSecret: args.api_secret,
+    secretVersion: args.secret_version,
+    encryptedPhone: args.encrypted_phone
   };
 }
 
@@ -262,6 +294,11 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
 
     async listProducts(args) {
       const result = await gateway.listProducts(args);
+      return result.data;
+    },
+
+    async conversationAgentLogin(args) {
+      const result = await gateway.conversationAgentLogin(args);
       return result.data;
     },
 
@@ -338,6 +375,21 @@ export async function createMcpServer(env: EnvMap = process.env) {
       }
     },
     async (args) => createTextResult(await service.listProducts(args))
+  );
+
+  server.registerTool(
+    'conversation-agent-login',
+    {
+      description: 'Login a conversation agent user with encrypted mobile phone headers and return an access token.',
+      inputSchema: {
+        org_id: z.string().min(1).describe('Organization id.'),
+        api_key: z.string().min(1).describe('Conversation agent api key.'),
+        api_secret: z.string().min(1).describe('Conversation agent public key. Forwarded as X-API-SECRET.'),
+        secret_version: z.string().min(1).describe('Conversation agent secret version. Forwarded as X-SECRET-VERSION.'),
+        encrypted_phone: z.string().min(1).describe('Encrypted mobile phone ciphertext. Forwarded as X-Encryped-PHONE.')
+      }
+    },
+    async (args) => createTextResult(await service.conversationAgentLogin(normalizeConversationAgentLoginArgs(args)))
   );
 
   const conversationPayInputSchema = {

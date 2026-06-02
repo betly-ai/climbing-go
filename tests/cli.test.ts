@@ -17,6 +17,7 @@ describe('CLI skeleton', () => {
     expect(helpText).toContain('store');
     expect(helpText).toContain('product');
     expect(helpText).toContain('order');
+    expect(helpText).toContain('auth');
     expect(helpText).toContain('config');
     expect(helpText).toContain('mcp-serve');
   });
@@ -53,6 +54,17 @@ describe('CLI skeleton', () => {
     const helpText = orderCommand?.helpInformation() ?? '';
 
     expect(helpText).toContain('create');
+  });
+
+  it('shows auth subcommands in help output', async () => {
+    const cliModule = await importCliModule();
+    const createProgram = cliModule?.createProgram;
+
+    const program = typeof createProgram === 'function' ? createProgram() : null;
+    const authCommand = program?.commands.find((command: { name(): string }) => command.name() === 'auth');
+    const helpText = authCommand?.helpInformation() ?? '';
+
+    expect(helpText).toContain('login');
   });
 
   it('runs store list with resolved endpoint output', async () => {
@@ -148,6 +160,78 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('"name": "Fixture Time Product"');
     expect(result.stdout).toContain('"id": "fixture-variant-time"');
     expect(result.stdout).toContain('"price": 456');
+  });
+
+  it('runs auth login with conversation agent headers', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedArgs: unknown;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli([
+            'auth',
+            'login',
+            '--org-id',
+            'fixture-org',
+            '--api-key',
+            'fixture-api-key',
+            '--api-secret',
+            'fixture-public-key',
+            '--secret-version',
+            'v1',
+            '--encrypted-phone',
+            'fixture-ciphertext'
+          ], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async listProducts() {
+                throw new Error('unused');
+              },
+              async conversationAgentLogin(args) {
+                receivedArgs = args;
+                return {
+                  ok: true,
+                  tool: 'conversation-agent-login',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    access_token: 'fixture-access-token',
+                    token_type: 'Bearer',
+                    expires_in: 300,
+                    user: {
+                      id: 'fixture-user',
+                      mobile: '138****8000',
+                      is_new_user: false
+                    }
+                  }
+                };
+              },
+              async previewAlipayOrder() {
+                throw new Error('unused');
+              },
+              async createAlipayPendingOrder() {
+                throw new Error('unused');
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedArgs).toEqual({
+      orgId: 'fixture-org',
+      apiKey: 'fixture-api-key',
+      apiSecret: 'fixture-public-key',
+      secretVersion: 'v1',
+      encryptedPhone: 'fixture-ciphertext'
+    });
+    expect(result.stdout).toContain('"tool": "conversation-agent-login"');
+    expect(result.stdout).toContain('"access_token": "fixture-access-token"');
   });
 
   it('runs order preview with conversation pay arguments', async () => {

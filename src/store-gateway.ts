@@ -44,6 +44,14 @@ export interface CreateAlipayPendingOrderArgs extends PreviewAlipayOrderArgs {
   paymentActionType?: 'web_cashier' | 'mini_program';
 }
 
+export interface ConversationAgentLoginArgs {
+  orgId: string;
+  apiKey: string;
+  apiSecret: string;
+  secretVersion: string;
+  encryptedPhone: string;
+}
+
 export interface ConversationPayPreviewResult {
   preview: Record<string, unknown>;
   assistant_message?: string;
@@ -55,6 +63,14 @@ export interface ConversationPayCreateResult {
   payment: Record<string, unknown>;
   payment_action: Record<string, unknown> | null;
   assistant_message?: string;
+  [key: string]: unknown;
+}
+
+export interface ConversationAgentLoginResult {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -85,6 +101,12 @@ export interface StoreGateway {
       products: ProductRecord[];
       count: number;
     };
+  }>;
+  conversationAgentLogin(args: ConversationAgentLoginArgs): Promise<{
+    ok: true;
+    tool: 'conversation-agent-login';
+    endpoint: string;
+    data: ConversationAgentLoginResult;
   }>;
   previewAlipayOrder(args: PreviewAlipayOrderArgs): Promise<{
     ok: true;
@@ -288,9 +310,11 @@ async function callTool(
       | 'listStores'
       | 'getStore'
       | 'listProducts'
+      | 'conversation-agent-login'
       | 'preview-alipay-order'
       | 'create-alipay-pending-order';
     args: object;
+    headers?: Record<string, string>;
     fetchImpl: typeof fetch;
     timeoutMs: number;
   }
@@ -302,7 +326,8 @@ async function callTool(
     const response = await input.fetchImpl(input.endpoint, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        ...input.headers
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -359,6 +384,16 @@ function toConversationPayArgs(args: PreviewAlipayOrderArgs | CreateAlipayPendin
   }
 
   return payload;
+}
+
+function toConversationAgentLoginHeaders(args: ConversationAgentLoginArgs) {
+  return {
+    'X-ORG-ID': args.orgId,
+    'X-API-KEY': args.apiKey,
+    'X-API-SECRET': args.apiSecret,
+    'X-SECRET-VERSION': args.secretVersion,
+    'X-Encryped-PHONE': args.encryptedPhone
+  };
 }
 
 export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): StoreGateway {
@@ -540,6 +575,42 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
           products,
           count: typeof record.count === 'number' ? record.count : products.length
         }
+      };
+    },
+
+    async conversationAgentLogin(args: ConversationAgentLoginArgs) {
+      const response = await callTool({
+        endpoint: normalizedEndpoint,
+        toolName: 'conversation-agent-login',
+        args: {},
+        headers: toConversationAgentLoginHeaders(args),
+        fetchImpl,
+        timeoutMs
+      });
+      const text = parseContentText(response, normalizedEndpoint);
+      const record = parseToolJson(text, 'conversation-agent-login', normalizedEndpoint);
+
+      if (typeof record.access_token !== 'string' || typeof record.token_type !== 'string') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'conversation-agent-login response missing required access_token or token_type fields',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      if (typeof record.expires_in !== 'number') {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'conversation-agent-login response missing required expires_in field',
+          endpoint: normalizedEndpoint
+        });
+      }
+
+      return {
+        ok: true,
+        tool: 'conversation-agent-login',
+        endpoint: normalizedEndpoint,
+        data: record as unknown as ConversationAgentLoginResult
       };
     },
 

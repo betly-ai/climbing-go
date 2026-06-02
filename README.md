@@ -63,6 +63,14 @@ climbing-go product list --store-id <storeId> --search 次卡
 
 `product list` 当前仅返回公开 card 类型产品。
 
+对话 Agent 接入方可以先用加密手机号换取访问令牌：
+
+```bash
+climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --encrypted-phone <ciphertext>
+```
+
+其中 `--api-secret` 对应平台侧加密手机号使用的公钥，会作为 `X-API-SECRET` 转发给远端 MCP。
+
 选择产品返回中的 `data.products[].variants[].id` 后，可以创建订单并发起支付宝支付：
 
 ```bash
@@ -80,6 +88,7 @@ climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId>
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
 - 查看某个城市或门店当前公开可售的 card 类型产品
+- 通过加密手机号为对话 Agent 换取访问令牌
 - 使用 SKU 创建 card 类型产品订单并发起支付宝支付
 
 当前不包含会员私有资产、课程预约和其他私有能力。
@@ -93,6 +102,7 @@ climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 深圳 --store-search iN
 climbing-go product list --city 深圳 --store-search iN --search 月卡
+climbing-go auth login --org-id <orgId> --api-key <apiKey> --api-secret <publicKey> --secret-version v1 --encrypted-phone <ciphertext>
 climbing-go order preview --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
 climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId> --variant-id <variantId>
 ```
@@ -105,6 +115,7 @@ climbing-go order create --org-id <orgId> --mobile <mobile> --store-id <storeId>
 - `store get` 重点看 `data.store`
 - `product list` 重点看 `data.store`、`data.products`、`data.products[].variants` 和 `data.count`
 - SKU 最小字段为 `id`、`name`、`price`、`original_price`
+- `auth login` 成功后重点看 `data.access_token`、`data.token_type` 和 `data.expires_in`
 - `order preview` 使用 `data.products[].variants[].id` 作为 SKU，成功后重点看 `data.preview`
 - `order create` 成功后重点看 `data.order`、`data.payment` 和 `data.payment_action.payment_url`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
@@ -179,11 +190,12 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露五个 MCP tools：
+启动后会通过 stdio 暴露六个 MCP tools：
 
 - `listStores`
 - `getStore`
 - `listProducts`
+- `conversation-agent-login`
 - `preview-alipay-order`
 - `create-alipay-pending-order`
 

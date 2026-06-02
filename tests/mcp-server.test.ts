@@ -57,7 +57,7 @@ describe('MCP stdio server', () => {
 
     const { tools } = await client.listTools();
 
-    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore', 'listProducts', 'preview-alipay-order', 'create-alipay-pending-order']));
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore', 'listProducts', 'conversation-agent-login', 'preview-alipay-order', 'create-alipay-pending-order']));
 
     const listResult = await client.callTool({
       name: 'listStores',
@@ -91,6 +91,17 @@ describe('MCP stdio server', () => {
       }
     });
 
+    const loginResult = await client.callTool({
+      name: 'conversation-agent-login',
+      arguments: {
+        org_id: 'fixture-org',
+        api_key: 'fixture-api-key',
+        api_secret: 'fixture-public-key',
+        secret_version: 'v1',
+        encrypted_phone: 'fixture-ciphertext'
+      }
+    });
+
     const orderResult = await client.callTool({
       name: 'create-alipay-pending-order',
       arguments: {
@@ -105,6 +116,7 @@ describe('MCP stdio server', () => {
     const getText = getResult.content.find(item => item.type === 'text');
     const productText = productResult.content.find(item => item.type === 'text');
     const previewText = previewResult.content.find(item => item.type === 'text');
+    const loginText = loginResult.content.find(item => item.type === 'text');
     const orderText = orderResult.content.find(item => item.type === 'text');
 
     expect(listText?.text).toContain('"stores"');
@@ -116,6 +128,8 @@ describe('MCP stdio server', () => {
     expect(productText?.text).not.toContain('10次攀岩卡');
     expect(previewText?.text).toContain('"preview"');
     expect(previewText?.text).toContain('"payment_channel_type": "alipay"');
+    expect(loginText?.text).toContain('"access_token": "fixture-access-token"');
+    expect(loginText?.text).toContain('"token_type": "Bearer"');
     expect(orderText?.text).toContain('"order"');
     expect(orderText?.text).toContain('"payment"');
     expect(orderText?.text).toContain('"payment_action"');
