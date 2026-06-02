@@ -41,7 +41,12 @@ describe('skill package', () => {
     expect(readme).toContain('## Skill');
     expect(readme).toContain('skills/betly-store/SKILL.md');
     expect(readme).toContain('climbing-go store list --city 上海');
-    expect(readme).toContain('已支持通过 MCP 查询公开门店列表与详情');
+    expect(readme).toContain('已支持通过 MCP 查询门店列表与详情、查询可购买产品');
+    expect(readme).toContain('启动后会通过 stdio 暴露公开查询 tools');
+    expect(readme).toContain('climbing-go product list --city 上海 --search 单次');
+    expect(readme).not.toContain('authLogin');
+    expect(readme).not.toContain('previewOrder');
+    expect(readme).not.toContain('createOrder');
     expect(readme).not.toContain('config set endpoint https://mcp.example.com');
   });
 });

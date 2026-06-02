@@ -1,75 +1,44 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod/v4';
 
 import { loadConfig, type EnvMap } from './config.js';
 import { resolveEndpoint } from './endpoint.js';
-import { createStoreGateway, type ListStoresArgs, type StoreGateway, type StoreRecord } from './store-gateway.js';
+import {
+  createStoreGateway,
+  type ClimbingGateway,
+  type AuthLoginArgs,
+  type CreateOrderArgs,
+  type JsonObject,
+  type ListProductsArgs,
+  type ListStoresArgs,
+  type PreviewOrderArgs,
+  type ProductRecord,
+  type StoreRecord
+} from './store-gateway.js';
 import { CLIMBING_GO_VERSION } from './version.js';
 
 export const MCP_SERVER_COMMANDS = new Set(['mcp-serve', 'serve']);
 
-interface StoreService {
+export interface StoreService {
   listStores(args: ListStoresArgs): Promise<{
     stores: StoreRecord[];
     count: number;
   }>;
   getStore(storeId: string): Promise<StoreRecord>;
+  listProducts(args: ListProductsArgs): Promise<{
+    products: ProductRecord[];
+  }>;
+  authLogin(args: AuthLoginArgs): Promise<JsonObject>;
+  previewOrder(args: PreviewOrderArgs): Promise<JsonObject>;
+  createOrder(args: CreateOrderArgs): Promise<JsonObject>;
 }
 
-async function loadFixtureJson<T>(fixtureDir: string, fileName: string) {
-  const raw = await readFile(path.join(fixtureDir, fileName), 'utf8');
-  return JSON.parse(raw) as T;
+export interface CreateMcpServerOptions {
+  service?: StoreService;
 }
 
-function applyListFilters(
-  stores: StoreRecord[],
-  args: ListStoresArgs
-) {
-  const filtered = stores.filter(store => {
-    if (args.city && store.city !== args.city) {
-      return false;
-    }
-
-    if (args.search && !store.name.toLowerCase().includes(args.search.toLowerCase())) {
-      return false;
-    }
-
-    return true;
-  });
-  const start = Math.max(args.offset ?? 0, 0);
-  const end = args.limit ? start + Math.max(args.limit, 0) : undefined;
-
-  return {
-    stores: filtered.slice(start, end),
-    count: filtered.length
-  };
-}
-
-function createFixtureStoreService(fixtureDir: string): StoreService {
-  return {
-    async listStores(args) {
-      const payload = await loadFixtureJson<{ stores: StoreRecord[]; count?: number }>(fixtureDir, 'store-list.json');
-
-      return applyListFilters(payload.stores ?? [], args);
-    },
-
-    async getStore(storeId) {
-      const payload = await loadFixtureJson<StoreRecord>(fixtureDir, 'store-detail.json');
-
-      if (payload.id !== storeId) {
-        throw new Error('Store not found');
-      }
-
-      return payload;
-    }
-  };
-}
-
-async function resolveGateway(env: EnvMap): Promise<StoreGateway> {
+async function resolveGateway(env: EnvMap): Promise<ClimbingGateway> {
   const config = await loadConfig(env);
   const endpoint = resolveEndpoint({
     configEndpoint: config.endpoint,
@@ -80,10 +49,6 @@ async function resolveGateway(env: EnvMap): Promise<StoreGateway> {
 }
 
 async function createStoreService(env: EnvMap): Promise<StoreService> {
-  if (env.CLIMBING_GO_FIXTURE_DIR) {
-    return createFixtureStoreService(env.CLIMBING_GO_FIXTURE_DIR);
-  }
-
   const gateway = await resolveGateway(env);
 
   return {
@@ -95,6 +60,26 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
     async getStore(storeId) {
       const result = await gateway.getStore(storeId);
       return result.data.store;
+    },
+
+    async listProducts(args) {
+      const result = await gateway.listProducts(args);
+      return result.data;
+    },
+
+    async authLogin(args) {
+      const result = await gateway.authLogin(args);
+      return result.data;
+    },
+
+    async previewOrder(args) {
+      const result = await gateway.previewOrder(args);
+      return result.data;
+    },
+
+    async createOrder(args) {
+      const result = await gateway.createOrder(args);
+      return result.data;
     }
   };
 }
@@ -114,8 +99,11 @@ export function shouldRunMcpServer(argv: string[]) {
   return argv.includes('--mcp') || MCP_SERVER_COMMANDS.has(argv[0] ?? '');
 }
 
-export async function createMcpServer(env: EnvMap = process.env) {
-  const service = await createStoreService(env);
+export async function createMcpServer(
+  env: EnvMap = process.env,
+  options: CreateMcpServerOptions = {}
+) {
+  const service = options.service ?? await createStoreService(env);
   const server = new McpServer({
     name: 'climbing-go',
     version: CLIMBING_GO_VERSION
@@ -144,6 +132,67 @@ export async function createMcpServer(env: EnvMap = process.env) {
       }
     },
     async ({ id }) => createTextResult(await service.getStore(id))
+  );
+
+  server.registerTool(
+    'listProducts',
+    {
+      description: 'List purchasable Banana Climbing products for conversation checkout.',
+      inputSchema: {
+        storeIds: z.array(z.string()).optional().describe('Candidate store ids. Omit when the user has not selected a store.'),
+        productTypes: z.array(z.string()).optional().describe('Product types such as card, bundle, or goods.'),
+        keyword: z.string().optional().describe('Keyword such as 新手, 体验, or 单次.'),
+        limit: z.number().int().positive().optional().describe('Maximum number of products to return.')
+      }
+    },
+    async (args) => createTextResult(await service.listProducts(args))
+  );
+
+  server.registerTool(
+    'authLogin',
+    {
+      description: 'Exchange conversation-agent platform credentials for a short-lived access token used by order tools.',
+      inputSchema: {
+        org_id: z.string().min(1).describe('Organization id forwarded to the climbing MCP as X-ORG-ID.'),
+        api_key: z.string().min(1).describe('Platform api key forwarded as X-API-KEY.'),
+        api_secret: z.string().min(1).describe('Platform api secret forwarded as X-API-SECRET.'),
+        secret_version: z.string().min(1).describe('Secret version forwarded as X-SECRET-VERSION.'),
+        encrypted_phone: z.string().min(1).describe('Encrypted phone forwarded as X-Encryped-PHONE.')
+      }
+    },
+    async (args) => createTextResult(await service.authLogin(args))
+  );
+
+  const orderBaseInputSchema = {
+    store_id: z.string().min(1).describe('Purchase store id.'),
+    variant_id: z.string().min(1).describe('Product variant id from listProducts variants[].id.'),
+    quantity: z.number().int().positive().optional().describe('Purchase quantity. Defaults to 1.'),
+    participant_id: z.string().optional().describe('Participant id.'),
+    user_coupon_id: z.string().optional().describe('User coupon id.'),
+    promotion_id: z.string().optional().describe('Promotion id.'),
+    access_token: z.string().min(1).describe('Short-lived access token returned by authLogin.'),
+    org_id: z.string().optional().describe('Optional organization id forwarded as X-ORG-ID.')
+  };
+
+  server.registerTool(
+    'previewOrder',
+    {
+      description: 'Preview an Alipay pending order before user confirmation. This does not create an order.',
+      inputSchema: orderBaseInputSchema
+    },
+    async (args) => createTextResult(await service.previewOrder(args))
+  );
+
+  server.registerTool(
+    'createOrder',
+    {
+      description: 'Create an Alipay pending order only after explicit user confirmation.',
+      inputSchema: {
+        ...orderBaseInputSchema,
+        payment_action_type: z.enum(['web_cashier', 'mini_program']).optional().describe('Alipay payment action type. Defaults to web_cashier.')
+      }
+    },
+    async (args) => createTextResult(await service.createOrder(args))
   );
 
   return server;

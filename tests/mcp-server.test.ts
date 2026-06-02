@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+
+import { createMcpServer, type StoreService } from '../src/mcp-server.js';
 
 const transports: StdioClientTransport[] = [];
 
@@ -24,8 +27,7 @@ function createTransport(args: string[]) {
     command: process.execPath,
     args: ['--import', 'tsx', path.resolve(import.meta.dirname, '../src/index.ts'), ...args],
     env: {
-      ...process.env,
-      CLIMBING_GO_FIXTURE_DIR: path.resolve(import.meta.dirname, 'fixtures')
+      ...process.env
     },
     stderr: 'pipe'
   });
@@ -49,15 +51,78 @@ function createClient() {
 }
 
 describe('MCP stdio server', () => {
-  it('serves store tools over stdio with the --mcp entrypoint', async () => {
+  it('serves climbing tools with injected service handlers', async () => {
+    const service: StoreService = {
+      async listStores() {
+        return {
+          stores: [{ id: 'store-1', name: '香蕉攀岩上海旗舰馆', city: '上海' }],
+          count: 1
+        };
+      },
+      async getStore() {
+        return { id: '23b9298b-5dbe-426f-94d2-5905bb41558f', name: '香蕉攀岩上海旗舰馆' };
+      },
+      async listProducts() {
+        return {
+          products: [
+            {
+              id: 'product-1',
+              name: '单次攀岩票',
+              type: 'card',
+              variants: [{ id: 'variant-1', name: '单次票' }]
+            }
+          ]
+        };
+      },
+      async authLogin() {
+        return {
+          access_token: 'agent-token',
+          token_type: 'Bearer',
+          expires_in: 300
+        };
+      },
+      async previewOrder(args) {
+        return {
+          preview: {
+            store_id: args.store_id,
+            variant_id: args.variant_id,
+            amount: 99,
+            currency: 'CNY',
+            payment_channel_type: 'alipay'
+          }
+        };
+      },
+      async createOrder(args) {
+        return {
+          order: {
+            order_id: 'order-1',
+            amount: 99,
+            status: 'pending'
+          },
+          payment_action: {
+            type: args.payment_action_type ?? 'web_cashier',
+            payment_url: 'https://example.com/pay/order-1'
+          }
+        };
+      }
+    };
     const client = createClient();
-    const transport = createTransport(['--mcp']);
+    const server = await createMcpServer({}, { service });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
-    await client.connect(transport);
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
 
     const { tools } = await client.listTools();
 
-    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['listStores', 'getStore']));
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
+      'listStores',
+      'getStore',
+      'listProducts',
+      'authLogin',
+      'previewOrder',
+      'createOrder'
+    ]));
 
     const listResult = await client.callTool({
       name: 'listStores',
@@ -73,13 +138,78 @@ describe('MCP stdio server', () => {
         id: '23b9298b-5dbe-426f-94d2-5905bb41558f'
       }
     });
+    const productResult = await client.callTool({
+      name: 'listProducts',
+      arguments: {
+        productTypes: ['card'],
+        keyword: '单次',
+        limit: 1
+      }
+    });
+    const loginResult = await client.callTool({
+      name: 'authLogin',
+      arguments: {
+        org_id: '5f7cb659-7302-4465-85b1-68a64bb3322e',
+        api_key: 'api-key',
+        api_secret: 'api-secret',
+        secret_version: 'v1',
+        encrypted_phone: 'encrypted-phone'
+      }
+    });
+    const previewResult = await client.callTool({
+      name: 'previewOrder',
+      arguments: {
+        store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
+        variant_id: '33333333-3333-4333-8333-333333333333',
+        access_token: 'fixture-token',
+        quantity: 1
+      }
+    });
+    const createResult = await client.callTool({
+      name: 'createOrder',
+      arguments: {
+        store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
+        variant_id: '33333333-3333-4333-8333-333333333333',
+        access_token: 'fixture-token',
+        payment_action_type: 'web_cashier'
+      }
+    });
 
     const listText = listResult.content.find(item => item.type === 'text');
     const getText = getResult.content.find(item => item.type === 'text');
+    const productText = productResult.content.find(item => item.type === 'text');
+    const loginText = loginResult.content.find(item => item.type === 'text');
+    const previewText = previewResult.content.find(item => item.type === 'text');
+    const createText = createResult.content.find(item => item.type === 'text');
 
     expect(listText?.text).toContain('"stores"');
     expect(listText?.text).toContain('上海');
     expect(getText?.text).toContain('"id": "23b9298b-5dbe-426f-94d2-5905bb41558f"');
+    expect(productText?.text).toContain('单次攀岩票');
+    expect(loginText?.text).toContain('"access_token"');
+    expect(previewText?.text).toContain('"payment_channel_type": "alipay"');
+    expect(createText?.text).toContain('https://example.com/pay/order-1');
+
+    await client.close();
+    await server.close();
+  });
+
+  it('starts over stdio with the --mcp entrypoint', async () => {
+    const client = createClient();
+    const transport = createTransport(['--mcp']);
+
+    await client.connect(transport);
+
+    const { tools } = await client.listTools();
+
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
+      'listStores',
+      'getStore',
+      'listProducts',
+      'authLogin',
+      'previewOrder',
+      'createOrder'
+    ]));
 
     await client.close();
   });
@@ -90,16 +220,9 @@ describe('MCP stdio server', () => {
 
     await client.connect(transport);
 
-    const result = await client.callTool({
-      name: 'getStore',
-      arguments: {
-        id: '23b9298b-5dbe-426f-94d2-5905bb41558f'
-      }
-    });
+    const { tools } = await client.listTools();
 
-    const content = result.content.find(item => item.type === 'text');
-
-    expect(content?.text).toContain('23b9298b-5dbe-426f-94d2-5905bb41558f');
+    expect(tools.map(tool => tool.name)).toContain('getStore');
 
     await client.close();
   });

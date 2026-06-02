@@ -6,13 +6,13 @@
   </a>
 </p>
 
-`climbing-go` 是一个由 Banana Climbing（香蕉攀岩）与 Betly 联合推出的公开门店查询工具。
+`climbing-go` 是一个由 Banana Climbing（香蕉攀岩）与 Betly 联合推出的攀岩服务查询与支付对接工具。
 
-如果你想快速查看香蕉攀岩有哪些门店、某个门店的详情，或者想让 AI Agent 帮你查询公开门店信息，这个工具就是为这个场景准备的。
+如果你想快速查看香蕉攀岩有哪些门店、某个门店的详情、可购买产品，或者让 AI Agent 对接香蕉攀岩的支付下单流程，这个工具就是为这些场景准备的。
 
-它把香蕉攀岩的公开门店查询能力封装成了好用的 CLI 与 MCP 接口，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
+它把香蕉攀岩的门店查询、产品查询封装成了好用的 CLI 与 MCP 接口，并为已完成授权的接入方提供支付对接 MCP tools，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
 
-已支持通过 MCP 查询公开门店列表与详情。
+已支持通过 MCP 查询门店列表与详情、查询可购买产品；支付对接 MCP tools 可在平台凭据齐备时完成支付宝待支付订单流程。
 
 ## 为什么是香蕉攀岩
 
@@ -49,6 +49,8 @@ climbing-go store list
 climbing-go store list --city 上海 --search 香蕉
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go product list --city 上海 --search 单次
+climbing-go product list --city 上海 --search 单次 --limit 10
 ```
 
 `store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时会按传入分页参数返回。
@@ -59,8 +61,8 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 - 按城市筛选香蕉攀岩门店
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
-
-当前不包含课程、会员、订单和其他私有能力。
+- 查询可购买产品和产品规格
+- 在支付对接场景中，由 AI Agent 通过 MCP 完成支付宝待支付订单流程
 
 ## 常用命令
 
@@ -69,6 +71,9 @@ climbing-go store list
 climbing-go store list --city 上海
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go product list --city 上海 --search 单次
+climbing-go product list --city 上海 --search 单次 --limit 10
+climbing-go product list --store-id 23b9298b-5dbe-426f-94d2-5905bb41558f --search 单次
 ```
 
 ## 返回结果怎么看
@@ -77,6 +82,7 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 
 - `store list` 重点看 `data.stores` 和 `data.count`
 - `store get` 重点看 `data.store`
+- `product list` 重点看 `data.products[].variants[].id`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
 
 ## Skill
@@ -137,10 +143,11 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露两个 MCP tools：
+启动后会通过 stdio 暴露公开查询 tools：
 
 - `listStores`
 - `getStore`
+- `listProducts`
 
 ## 如果你想自己开发
 
