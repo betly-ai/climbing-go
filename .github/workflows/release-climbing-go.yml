@@ -21,7 +21,7 @@ jobs:
       EXPECTED_GIT_USER_NAME: betlysaas
       EXPECTED_GIT_USER_EMAIL: betly@mx5.cn
       EXPECTED_NPM_USER_NAME: ${{ vars.NPM_EXPECTED_USER != '' && vars.NPM_EXPECTED_USER || 'betlysaas' }}
-      RELEASE_MCP_ENDPOINT: ${{ vars.RELEASE_MCP_ENDPOINT != '' && vars.RELEASE_MCP_ENDPOINT || 'https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run' }}
+      RELEASE_MCP_ENDPOINT: ${{ vars.RELEASE_MCP_ENDPOINT != '' && vars.RELEASE_MCP_ENDPOINT || 'https://climbing-mcp.mx5.cn/' }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:

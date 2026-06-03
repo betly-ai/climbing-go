@@ -97,6 +97,7 @@ describe('release workflow', () => {
     expect(workflowText).toContain('push:');
     expect(workflowText).toContain('- main');
     expect(workflowText).toContain('pnpm exec semantic-release');
+    expect(workflowText).toContain("https://climbing-mcp.mx5.cn/");
   });
 
   it('publishes CLI and MCP bin entries that point to built entry files', async () => {
