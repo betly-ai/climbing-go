@@ -1,7 +1,7 @@
 import type { EnvMap } from './config.js';
 
 export const DEFAULT_CLIMBING_MCP_ENDPOINT =
-  'https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run';
+  'https://climbing-mcp.mx5.cn/';
 
 const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
 

@@ -159,6 +159,6 @@ describe('endpoint resolution', () => {
           })
         : null;
 
-    expect(defaultEndpoint).toBe('https://climbing-mcp-ezeuekpuqt.cn-shenzhen.fcapp.run');
+    expect(defaultEndpoint).toBe('https://climbing-mcp.mx5.cn/');
   });
 });
