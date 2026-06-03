@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/betly-ai/climbing-go/compare/v1.3.0...v1.4.0) (2026-06-03)
+
+
+### Features
+
+* **endpoint:** 切换默认 climbing MCP 地址到 mx5 域名 ([#11](https://github.com/betly-ai/climbing-go/issues/11)) ([4fa8529](https://github.com/betly-ai/climbing-go/commit/4fa8529d7740ed64d5210fd736075e32a75af6bf))
+
 # [1.3.0](https://github.com/betly-ai/climbing-go/compare/v1.2.1...v1.3.0) (2026-06-02)
 
 
