@@ -9,8 +9,6 @@ export interface GatewayFactoryOptions {
   allowInsecure?: boolean;
   orderContext?: {
     authorization?: string;
-    orgId?: string;
-    paymentChannel?: string;
   };
 }
 
@@ -153,9 +151,7 @@ export function createProgram(options: RunCliOptions = {}) {
     return gatewayFactory(resolvedEndpoint, {
       allowInsecure: input.insecure,
       orderContext: {
-        authorization: env.CLIMBING_MCP_AUTHORIZATION,
-        orgId: env.CLIMBING_MCP_ORG_ID,
-        paymentChannel: env.CLIMBING_MCP_PAYMENT_CHANNEL
+        authorization: env.CLIMBING_MCP_AUTHORIZATION
       }
     });
   }
@@ -331,6 +327,7 @@ export function createProgram(options: RunCliOptions = {}) {
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .requiredOption('--store-id <id>', 'purchase store id')
     .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
+    .option('--payment-channel <channel>', 'payment channel such as alipay or wechat', 'alipay')
     .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
     .option('--participant-id <id>', 'participant id')
     .option('--user-coupon-id <id>', 'user coupon id')
@@ -341,6 +338,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure,
         storeId,
         variantId,
+        paymentChannel,
         quantity,
         participantId,
         userCouponId,
@@ -350,6 +348,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure?: boolean;
         storeId: string;
         variantId: string;
+        paymentChannel: string;
         quantity?: number;
         participantId?: string;
         userCouponId?: string;
@@ -359,6 +358,7 @@ export function createProgram(options: RunCliOptions = {}) {
         const result = await gateway.previewOrder({
           store_id: storeId,
           variant_id: variantId,
+          payment_channel: paymentChannel,
           quantity,
           participant_id: participantId,
           user_coupon_id: userCouponId,
@@ -375,6 +375,7 @@ export function createProgram(options: RunCliOptions = {}) {
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .requiredOption('--store-id <id>', 'purchase store id')
     .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
+    .option('--payment-channel <channel>', 'payment channel such as alipay or wechat', 'alipay')
     .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
     .option('--participant-id <id>', 'participant id')
     .option('--user-coupon-id <id>', 'user coupon id')
@@ -385,6 +386,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure,
         storeId,
         variantId,
+        paymentChannel,
         quantity,
         participantId,
         userCouponId,
@@ -394,6 +396,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure?: boolean;
         storeId: string;
         variantId: string;
+        paymentChannel: string;
         quantity?: number;
         participantId?: string;
         userCouponId?: string;
@@ -403,6 +406,7 @@ export function createProgram(options: RunCliOptions = {}) {
         const result = await gateway.createOrder({
           store_id: storeId,
           variant_id: variantId,
+          payment_channel: paymentChannel,
           quantity,
           participant_id: participantId,
           user_coupon_id: userCouponId,

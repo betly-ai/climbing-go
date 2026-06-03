@@ -74,6 +74,8 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 上海 --search 单次
 climbing-go product list --city 上海 --search 单次 --limit 10
 climbing-go product list --store-id 23b9298b-5dbe-426f-94d2-5905bb41558f --search 单次
+CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN" climbing-go order preview --store-id STORE_ID --variant-id VARIANT_ID --payment-channel alipay
+CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN" climbing-go order create --store-id STORE_ID --variant-id VARIANT_ID --payment-channel alipay
 ```
 
 ## 返回结果怎么看
@@ -143,11 +145,30 @@ climbing-go-mcp
 }
 ```
 
-启动后会通过 stdio 暴露公开查询 tools：
+启动后会通过 stdio 暴露以下 tools：
 
 - `listStores`
 - `getStore`
 - `listProducts`
+- `previewOrder`
+- `createOrder`
+
+订单工具需要通过环境变量提供登录令牌：
+
+```bash
+export CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN"
+```
+
+支付渠道通过订单工具参数传入，例如：
+
+```json
+{
+  "store_id": "<store_id>",
+  "variant_id": "<variant_id>",
+  "payment_channel": "alipay",
+  "quantity": 1
+}
+```
 
 ## 如果你想自己开发
 

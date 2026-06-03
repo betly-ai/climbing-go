@@ -49,6 +49,7 @@ export interface ListProductsArgs {
 export interface PreviewOrderArgs {
   store_id: string;
   variant_id: string;
+  payment_channel: string;
   quantity?: number;
   participant_id?: string;
   user_coupon_id?: string;
@@ -108,8 +109,6 @@ export interface StoreGatewayOptions {
   allowInsecure?: boolean;
   orderContext?: {
     authorization?: string;
-    orgId?: string;
-    paymentChannel?: string;
   };
 }
 
@@ -321,7 +320,7 @@ function validateProductRecord(product: unknown, endpoint: string) {
   }
 }
 
-function requireOrderHeaderValue(
+function requireOrderValue(
   value: string | undefined,
   endpoint: string,
   code: string,
@@ -340,7 +339,7 @@ function requireOrderHeaderValue(
 }
 
 function buildOrderHeaders(options: StoreGatewayOptions, endpoint: string) {
-  const authorization = requireOrderHeaderValue(
+  const authorization = requireOrderValue(
     options.orderContext?.authorization,
     endpoint,
     'CONVERSATION_AGENT_TOKEN_REQUIRED',
@@ -355,26 +354,22 @@ function buildOrderHeaders(options: StoreGatewayOptions, endpoint: string) {
   }
 
   return {
-    Authorization: authorization,
-    'X-ORG-ID': requireOrderHeaderValue(
-      options.orderContext?.orgId,
-      endpoint,
-      'CONVERSATION_AGENT_ORG_REQUIRED',
-      '缺少 CLIMBING_MCP_ORG_ID'
-    ),
-    'X-PAYMENT-CHANNEL': requireOrderHeaderValue(
-      options.orderContext?.paymentChannel,
-      endpoint,
-      'CONVERSATION_AGENT_PAYMENT_CHANNEL_REQUIRED',
-      '缺少 CLIMBING_MCP_PAYMENT_CHANNEL'
-    )
+    Authorization: authorization
   };
 }
 
-function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs) {
+function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs, endpoint: string) {
+  const paymentChannel = requireOrderValue(
+    args.payment_channel,
+    endpoint,
+    'CONVERSATION_AGENT_PAYMENT_CHANNEL_REQUIRED',
+    '缺少 payment_channel'
+  );
+
   const payload: Record<string, unknown> = {
     store_id: args.store_id,
-    variant_id: args.variant_id
+    variant_id: args.variant_id,
+    payment_channel: paymentChannel
   };
 
   if (args.quantity !== undefined) payload.quantity = args.quantity;
@@ -595,7 +590,7 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'previewOrder',
-        args: toOrderToolArgs(args),
+        args: toOrderToolArgs(args, normalizedEndpoint),
         headers: buildOrderHeaders(options, normalizedEndpoint),
         fetchImpl,
         timeoutMs
@@ -614,7 +609,7 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'createOrder',
-        args: toOrderToolArgs(args),
+        args: toOrderToolArgs(args, normalizedEndpoint),
         headers: buildOrderHeaders(options, normalizedEndpoint),
         fetchImpl,
         timeoutMs

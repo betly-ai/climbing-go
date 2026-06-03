@@ -45,9 +45,7 @@ async function resolveGateway(env: EnvMap): Promise<ClimbingGateway> {
 
   return createStoreGateway(endpoint, {
     orderContext: {
-      authorization: env.CLIMBING_MCP_AUTHORIZATION,
-      orgId: env.CLIMBING_MCP_ORG_ID,
-      paymentChannel: env.CLIMBING_MCP_PAYMENT_CHANNEL
+      authorization: env.CLIMBING_MCP_AUTHORIZATION
     }
   });
 }
@@ -150,6 +148,7 @@ export async function createMcpServer(
   const orderBaseInputSchema = {
     store_id: z.string().min(1).describe('Purchase store id.'),
     variant_id: z.string().min(1).describe('Product variant id from listProducts variants[].id.'),
+    payment_channel: z.string().min(1).describe('Payment channel such as alipay or wechat.'),
     quantity: z.number().int().positive().optional().describe('Purchase quantity. Defaults to 1.'),
     participant_id: z.string().optional().describe('Participant id.'),
     user_coupon_id: z.string().optional().describe('User coupon id.'),

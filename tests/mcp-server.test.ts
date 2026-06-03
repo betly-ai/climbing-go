@@ -139,6 +139,7 @@ describe('MCP stdio server', () => {
       arguments: {
         store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
         variant_id: '33333333-3333-4333-8333-333333333333',
+        payment_channel: 'alipay',
         quantity: 1
       }
     });
@@ -146,7 +147,8 @@ describe('MCP stdio server', () => {
       name: 'createOrder',
       arguments: {
         store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
-        variant_id: '33333333-3333-4333-8333-333333333333'
+        variant_id: '33333333-3333-4333-8333-333333333333',
+        payment_channel: 'alipay'
       }
     });
 

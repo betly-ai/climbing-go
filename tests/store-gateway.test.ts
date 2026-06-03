@@ -303,7 +303,7 @@ describe('store gateway', () => {
     expect(requestedToolName).toBe('listProducts');
   });
 
-  it('forwards injected order context headers and keeps tool arguments business-only', async () => {
+  it('forwards authorization header and sends payment channel as a tool argument', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedInit: RequestInit | undefined;
@@ -345,13 +345,12 @@ describe('store gateway', () => {
         ? await createStoreGateway('https://example.com', {
             fetch: fetchMock,
             orderContext: {
-              authorization: 'Bearer agent-token',
-              orgId: 'org-1',
-              paymentChannel: 'alipay'
+              authorization: 'Bearer agent-token'
             }
           }).createOrder({
             store_id: 'store-1',
             variant_id: 'variant-1',
+            payment_channel: 'alipay',
             quantity: 2
           })
         : null;
@@ -359,13 +358,12 @@ describe('store gateway', () => {
     expect(result?.tool).toBe('createOrder');
     expect(requestedInit?.headers).toEqual({
       'content-type': 'application/json',
-      Authorization: 'Bearer agent-token',
-      'X-ORG-ID': 'org-1',
-      'X-PAYMENT-CHANNEL': 'alipay'
+      Authorization: 'Bearer agent-token'
     });
     expect(requestedArgs).toEqual({
       store_id: 'store-1',
       variant_id: 'variant-1',
+      payment_channel: 'alipay',
       quantity: 2
     });
   });
@@ -387,9 +385,38 @@ describe('store gateway', () => {
 
     await expect(gateway?.createOrder({
       store_id: 'store-1',
-      variant_id: 'variant-1'
+      variant_id: 'variant-1',
+      payment_channel: 'alipay'
     })).rejects.toMatchObject({
       code: 'CONVERSATION_AGENT_TOKEN_REQUIRED'
+    });
+    expect(calledFetch).toBe(false);
+  });
+
+  it('requires payment channel before calling order tools', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let calledFetch = false;
+
+    const fetchMock = async () => {
+      calledFetch = true;
+      return new Response('{}');
+    };
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', {
+            fetch: fetchMock,
+            orderContext: { authorization: 'Bearer agent-token' }
+          })
+        : null;
+
+    await expect(gateway?.createOrder({
+      store_id: 'store-1',
+      variant_id: 'variant-1',
+      payment_channel: ''
+    })).rejects.toMatchObject({
+      code: 'CONVERSATION_AGENT_PAYMENT_CHANNEL_REQUIRED'
     });
     expect(calledFetch).toBe(false);
   });

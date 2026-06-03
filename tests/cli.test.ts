@@ -165,7 +165,7 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('单次攀岩票');
   });
 
-  it('runs order create with injected payment context', async () => {
+  it('runs order create with payment channel argument', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
     let receivedArgs: unknown;
@@ -181,15 +181,15 @@ describe('CLI skeleton', () => {
               'store-1',
               '--variant-id',
               'variant-1',
+              '--payment-channel',
+              'alipay',
               '--quantity',
               '2'
             ],
             {
               env: {
                 CLIMBING_MCP_ENDPOINT: 'https://env.example.com',
-                CLIMBING_MCP_AUTHORIZATION: 'Bearer agent-token',
-                CLIMBING_MCP_ORG_ID: 'org-1',
-                CLIMBING_MCP_PAYMENT_CHANNEL: 'alipay'
+                CLIMBING_MCP_AUTHORIZATION: 'Bearer agent-token'
               },
               gatewayFactory: (_endpoint, options) => {
                 receivedOptions = options;
@@ -230,6 +230,7 @@ describe('CLI skeleton', () => {
     expect(receivedArgs).toEqual({
       store_id: 'store-1',
       variant_id: 'variant-1',
+      payment_channel: 'alipay',
       quantity: 2,
       participant_id: undefined,
       user_coupon_id: undefined,
@@ -238,9 +239,7 @@ describe('CLI skeleton', () => {
     expect(receivedOptions).toEqual({
       allowInsecure: undefined,
       orderContext: {
-        authorization: 'Bearer agent-token',
-        orgId: 'org-1',
-        paymentChannel: 'alipay'
+        authorization: 'Bearer agent-token'
       }
     });
     expect(result.stdout).toContain('"tool": "createOrder"');
