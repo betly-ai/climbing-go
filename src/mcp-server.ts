@@ -7,7 +7,6 @@ import { resolveEndpoint } from './endpoint.js';
 import {
   createStoreGateway,
   type ClimbingGateway,
-  type AuthLoginArgs,
   type CreateOrderArgs,
   type JsonObject,
   type ListProductsArgs,
@@ -29,7 +28,6 @@ export interface StoreService {
   listProducts(args: ListProductsArgs): Promise<{
     products: ProductRecord[];
   }>;
-  authLogin(args: AuthLoginArgs): Promise<JsonObject>;
   previewOrder(args: PreviewOrderArgs): Promise<JsonObject>;
   createOrder(args: CreateOrderArgs): Promise<JsonObject>;
 }
@@ -45,7 +43,13 @@ async function resolveGateway(env: EnvMap): Promise<ClimbingGateway> {
     env
   });
 
-  return createStoreGateway(endpoint);
+  return createStoreGateway(endpoint, {
+    orderContext: {
+      authorization: env.CLIMBING_MCP_AUTHORIZATION,
+      orgId: env.CLIMBING_MCP_ORG_ID,
+      paymentChannel: env.CLIMBING_MCP_PAYMENT_CHANNEL
+    }
+  });
 }
 
 async function createStoreService(env: EnvMap): Promise<StoreService> {
@@ -64,11 +68,6 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
 
     async listProducts(args) {
       const result = await gateway.listProducts(args);
-      return result.data;
-    },
-
-    async authLogin(args) {
-      const result = await gateway.authLogin(args);
       return result.data;
     },
 
@@ -148,36 +147,19 @@ export async function createMcpServer(
     async (args) => createTextResult(await service.listProducts(args))
   );
 
-  server.registerTool(
-    'authLogin',
-    {
-      description: 'Exchange conversation-agent platform credentials for a short-lived access token used by order tools.',
-      inputSchema: {
-        org_id: z.string().min(1).describe('Organization id forwarded to the climbing MCP as X-ORG-ID.'),
-        api_key: z.string().min(1).describe('Platform api key forwarded as X-API-KEY.'),
-        api_secret: z.string().min(1).describe('Platform api secret forwarded as X-API-SECRET.'),
-        secret_version: z.string().min(1).describe('Secret version forwarded as X-SECRET-VERSION.'),
-        encrypted_phone: z.string().min(1).describe('Encrypted phone forwarded as X-Encryped-PHONE.')
-      }
-    },
-    async (args) => createTextResult(await service.authLogin(args))
-  );
-
   const orderBaseInputSchema = {
     store_id: z.string().min(1).describe('Purchase store id.'),
     variant_id: z.string().min(1).describe('Product variant id from listProducts variants[].id.'),
     quantity: z.number().int().positive().optional().describe('Purchase quantity. Defaults to 1.'),
     participant_id: z.string().optional().describe('Participant id.'),
     user_coupon_id: z.string().optional().describe('User coupon id.'),
-    promotion_id: z.string().optional().describe('Promotion id.'),
-    access_token: z.string().min(1).describe('Short-lived access token returned by authLogin.'),
-    org_id: z.string().optional().describe('Optional organization id forwarded as X-ORG-ID.')
+    promotion_id: z.string().optional().describe('Promotion id.')
   };
 
   server.registerTool(
     'previewOrder',
     {
-      description: 'Preview an Alipay pending order before user confirmation. This does not create an order.',
+      description: 'Preview a pending order before user confirmation. This does not create an order.',
       inputSchema: orderBaseInputSchema
     },
     async (args) => createTextResult(await service.previewOrder(args))
@@ -186,11 +168,8 @@ export async function createMcpServer(
   server.registerTool(
     'createOrder',
     {
-      description: 'Create an Alipay pending order only after explicit user confirmation.',
-      inputSchema: {
-        ...orderBaseInputSchema,
-        payment_action_type: z.enum(['web_cashier', 'mini_program']).optional().describe('Alipay payment action type. Defaults to web_cashier.')
-      }
+      description: 'Create a pending order only after explicit user confirmation.',
+      inputSchema: orderBaseInputSchema
     },
     async (args) => createTextResult(await service.createOrder(args))
   );

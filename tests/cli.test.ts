@@ -16,7 +16,6 @@ describe('CLI skeleton', () => {
 
     expect(helpText).toContain('store');
     expect(helpText).toContain('product');
-    expect(helpText).toContain('auth');
     expect(helpText).toContain('order');
     expect(helpText).toContain('config');
     expect(helpText).toContain('mcp-serve');
@@ -34,17 +33,16 @@ describe('CLI skeleton', () => {
     expect(helpText).toContain('get');
   });
 
-  it('shows product, auth, and order subcommands in help output', async () => {
+  it('shows product and order subcommands in help output', async () => {
     const cliModule = await importCliModule();
     const createProgram = cliModule?.createProgram;
 
     const program = typeof createProgram === 'function' ? createProgram() : null;
     const productCommand = program?.commands.find((command: { name(): string }) => command.name() === 'product');
-    const authCommand = program?.commands.find((command: { name(): string }) => command.name() === 'auth');
     const orderCommand = program?.commands.find((command: { name(): string }) => command.name() === 'order');
 
     expect(productCommand?.helpInformation()).toContain('list');
-    expect(authCommand?.helpInformation()).toContain('login');
+    expect(program?.commands.some((command: { name(): string }) => command.name() === 'auth')).toBe(false);
     expect(orderCommand?.helpInformation()).toContain('preview');
     expect(orderCommand?.helpInformation()).toContain('create');
   });
@@ -141,9 +139,6 @@ describe('CLI skeleton', () => {
                     }
                   };
                 },
-                async authLogin() {
-                  throw new Error('unused');
-                },
                 async previewOrder() {
                   throw new Error('unused');
                 },
@@ -170,80 +165,11 @@ describe('CLI skeleton', () => {
     expect(result.stdout).toContain('单次攀岩票');
   });
 
-  it('runs auth login with header-equivalent arguments', async () => {
+  it('runs order create with injected payment context', async () => {
     const cliModule = await importCliModule();
     const runCli = cliModule?.runCli;
     let receivedArgs: unknown;
-
-    const result =
-      typeof runCli === 'function'
-        ? await runCli(
-            [
-              'auth',
-              'login',
-              '--org-id',
-              'org-1',
-              '--api-key',
-              'api-key',
-              '--api-secret',
-              'api-secret',
-              '--secret-version',
-              'v1',
-              '--encrypted-phone',
-              'encrypted-phone'
-            ],
-            {
-              env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
-              gatewayFactory: () => ({
-                async listStores() {
-                  throw new Error('unused');
-                },
-                async getStore() {
-                  throw new Error('unused');
-                },
-                async listProducts() {
-                  throw new Error('unused');
-                },
-                async authLogin(args) {
-                  receivedArgs = args;
-                  return {
-                    ok: true,
-                    tool: 'authLogin',
-                    endpoint: 'https://env.example.com/api/climbing/mcp',
-                    data: {
-                      access_token: 'agent-token',
-                      token_type: 'Bearer',
-                      expires_in: 300
-                    }
-                  };
-                },
-                async previewOrder() {
-                  throw new Error('unused');
-                },
-                async createOrder() {
-                  throw new Error('unused');
-                }
-              })
-            }
-          )
-        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
-
-    expect(result.exitCode).toBe(0);
-    expect(receivedArgs).toEqual({
-      org_id: 'org-1',
-      api_key: 'api-key',
-      api_secret: 'api-secret',
-      secret_version: 'v1',
-      encrypted_phone: 'encrypted-phone'
-    });
-    expect(result.stdout).toContain('"tool": "authLogin"');
-    expect(result.stdout).toContain('"access_token": "agent-token"');
-  });
-
-  it('runs order create with alipay options', async () => {
-    const cliModule = await importCliModule();
-    const runCli = cliModule?.runCli;
-    let receivedArgs: unknown;
+    let receivedOptions: unknown;
 
     const result =
       typeof runCli === 'function'
@@ -255,46 +181,47 @@ describe('CLI skeleton', () => {
               'store-1',
               '--variant-id',
               'variant-1',
-              '--access-token',
-              'agent-token',
-              '--org-id',
-              'org-1',
               '--quantity',
-              '2',
-              '--payment-action-type',
-              'web_cashier'
+              '2'
             ],
             {
-              env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
-              gatewayFactory: () => ({
-                async listStores() {
-                  throw new Error('unused');
-                },
-                async getStore() {
-                  throw new Error('unused');
-                },
-                async listProducts() {
-                  throw new Error('unused');
-                },
-                async authLogin() {
-                  throw new Error('unused');
-                },
-                async previewOrder() {
-                  throw new Error('unused');
-                },
-                async createOrder(args) {
-                  receivedArgs = args;
-                  return {
-                    ok: true,
-                    tool: 'createOrder',
-                    endpoint: 'https://env.example.com/api/climbing/mcp',
-                    data: {
-                      order: { order_id: 'order-1', amount: 99, status: 'pending' },
-                      payment_action: { type: 'web_cashier', payment_url: 'https://example.com/pay' }
-                    }
-                  };
-                }
-              })
+              env: {
+                CLIMBING_MCP_ENDPOINT: 'https://env.example.com',
+                CLIMBING_MCP_AUTHORIZATION: 'Bearer agent-token',
+                CLIMBING_MCP_ORG_ID: 'org-1',
+                CLIMBING_MCP_PAYMENT_CHANNEL: 'alipay'
+              },
+              gatewayFactory: (_endpoint, options) => {
+                receivedOptions = options;
+                return {
+                  async listStores() {
+                    throw new Error('unused');
+                  },
+                  async getStore() {
+                    throw new Error('unused');
+                  },
+                  async listProducts() {
+                    throw new Error('unused');
+                  },
+                  async previewOrder() {
+                    throw new Error('unused');
+                  },
+                  async createOrder(args) {
+                    receivedArgs = args;
+                    return {
+                      ok: true,
+                      tool: 'createOrder',
+                      endpoint: 'https://env.example.com/api/climbing/mcp',
+                      data: {
+                        order_id: 'order-1',
+                        amount: 99,
+                        status: 'pending',
+                        payment_url: 'https://example.com/pay'
+                      }
+                    };
+                  }
+                };
+              }
             }
           )
         : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
@@ -303,13 +230,18 @@ describe('CLI skeleton', () => {
     expect(receivedArgs).toEqual({
       store_id: 'store-1',
       variant_id: 'variant-1',
-      access_token: 'agent-token',
-      org_id: 'org-1',
       quantity: 2,
       participant_id: undefined,
       user_coupon_id: undefined,
-      promotion_id: undefined,
-      payment_action_type: 'web_cashier'
+      promotion_id: undefined
+    });
+    expect(receivedOptions).toEqual({
+      allowInsecure: undefined,
+      orderContext: {
+        authorization: 'Bearer agent-token',
+        orgId: 'org-1',
+        paymentChannel: 'alipay'
+      }
     });
     expect(result.stdout).toContain('"tool": "createOrder"');
     expect(result.stdout).toContain('https://example.com/pay');

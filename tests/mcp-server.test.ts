@@ -74,13 +74,6 @@ describe('MCP stdio server', () => {
           ]
         };
       },
-      async authLogin() {
-        return {
-          access_token: 'agent-token',
-          token_type: 'Bearer',
-          expires_in: 300
-        };
-      },
       async previewOrder(args) {
         return {
           preview: {
@@ -92,17 +85,13 @@ describe('MCP stdio server', () => {
           }
         };
       },
-      async createOrder(args) {
+      async createOrder() {
         return {
-          order: {
-            order_id: 'order-1',
-            amount: 99,
-            status: 'pending'
-          },
-          payment_action: {
-            type: args.payment_action_type ?? 'web_cashier',
-            payment_url: 'https://example.com/pay/order-1'
-          }
+          order_id: 'order-1',
+          amount: 99,
+          status: 'pending',
+          payment_url: 'https://example.com/pay/order-1',
+          payment_qr_code_url: 'https://example.com/pay/order-1'
         };
       }
     };
@@ -119,7 +108,6 @@ describe('MCP stdio server', () => {
       'listStores',
       'getStore',
       'listProducts',
-      'authLogin',
       'previewOrder',
       'createOrder'
     ]));
@@ -146,22 +134,11 @@ describe('MCP stdio server', () => {
         limit: 1
       }
     });
-    const loginResult = await client.callTool({
-      name: 'authLogin',
-      arguments: {
-        org_id: '5f7cb659-7302-4465-85b1-68a64bb3322e',
-        api_key: 'api-key',
-        api_secret: 'api-secret',
-        secret_version: 'v1',
-        encrypted_phone: 'encrypted-phone'
-      }
-    });
     const previewResult = await client.callTool({
       name: 'previewOrder',
       arguments: {
         store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
         variant_id: '33333333-3333-4333-8333-333333333333',
-        access_token: 'fixture-token',
         quantity: 1
       }
     });
@@ -169,16 +146,13 @@ describe('MCP stdio server', () => {
       name: 'createOrder',
       arguments: {
         store_id: '23b9298b-5dbe-426f-94d2-5905bb41558f',
-        variant_id: '33333333-3333-4333-8333-333333333333',
-        access_token: 'fixture-token',
-        payment_action_type: 'web_cashier'
+        variant_id: '33333333-3333-4333-8333-333333333333'
       }
     });
 
     const listText = listResult.content.find(item => item.type === 'text');
     const getText = getResult.content.find(item => item.type === 'text');
     const productText = productResult.content.find(item => item.type === 'text');
-    const loginText = loginResult.content.find(item => item.type === 'text');
     const previewText = previewResult.content.find(item => item.type === 'text');
     const createText = createResult.content.find(item => item.type === 'text');
 
@@ -186,7 +160,6 @@ describe('MCP stdio server', () => {
     expect(listText?.text).toContain('上海');
     expect(getText?.text).toContain('"id": "23b9298b-5dbe-426f-94d2-5905bb41558f"');
     expect(productText?.text).toContain('单次攀岩票');
-    expect(loginText?.text).toContain('"access_token"');
     expect(previewText?.text).toContain('"payment_channel_type": "alipay"');
     expect(createText?.text).toContain('https://example.com/pay/order-1');
 
@@ -206,7 +179,6 @@ describe('MCP stdio server', () => {
       'listStores',
       'getStore',
       'listProducts',
-      'authLogin',
       'previewOrder',
       'createOrder'
     ]));

@@ -303,66 +303,7 @@ describe('store gateway', () => {
     expect(requestedToolName).toBe('listProducts');
   });
 
-  it('forwards authLogin credentials as MCP request headers', async () => {
-    const storeGatewayModule = await importStoreGatewayModule();
-    const createStoreGateway = storeGatewayModule?.createStoreGateway;
-    let requestedInit: RequestInit | undefined;
-    let requestedArgs: unknown;
-
-    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requestedInit = init;
-      const body = JSON.parse(String(init?.body)) as {
-        params?: {
-          arguments?: unknown;
-        };
-      };
-      requestedArgs = body.params?.arguments;
-
-      return new Response(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  access_token: 'agent-token',
-                  token_type: 'Bearer',
-                  expires_in: 300
-                })
-              }
-            ]
-          }
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      );
-    };
-
-    const result =
-      typeof createStoreGateway === 'function'
-        ? await createStoreGateway('https://example.com', { fetch: fetchMock }).authLogin({
-            org_id: 'org-1',
-            api_key: 'api-key',
-            api_secret: 'api-secret',
-            secret_version: 'v1',
-            encrypted_phone: 'encrypted-phone'
-          })
-        : null;
-
-    expect(result?.data.access_token).toBe('agent-token');
-    expect(requestedArgs).toEqual({});
-    expect(requestedInit?.headers).toEqual({
-      'content-type': 'application/json',
-      'X-ORG-ID': 'org-1',
-      'X-API-KEY': 'api-key',
-      'X-API-SECRET': 'api-secret',
-      'X-SECRET-VERSION': 'v1',
-      'X-Encryped-PHONE': 'encrypted-phone'
-    });
-  });
-
-  it('forwards order access token as Authorization header and strips transport-only arguments', async () => {
+  it('forwards injected order context headers and keeps tool arguments business-only', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
     let requestedInit: RequestInit | undefined;
@@ -386,8 +327,10 @@ describe('store gateway', () => {
               {
                 type: 'text',
                 text: JSON.stringify({
-                  order: { order_id: 'order-1', amount: 99, status: 'pending' },
-                  payment_action: { type: 'web_cashier', payment_url: 'https://example.com/pay' }
+                  order_id: 'order-1',
+                  amount: 99,
+                  status: 'pending',
+                  payment_url: 'https://example.com/pay'
                 })
               }
             ]
@@ -399,13 +342,17 @@ describe('store gateway', () => {
 
     const result =
       typeof createStoreGateway === 'function'
-        ? await createStoreGateway('https://example.com', { fetch: fetchMock }).createOrder({
+        ? await createStoreGateway('https://example.com', {
+            fetch: fetchMock,
+            orderContext: {
+              authorization: 'Bearer agent-token',
+              orgId: 'org-1',
+              paymentChannel: 'alipay'
+            }
+          }).createOrder({
             store_id: 'store-1',
             variant_id: 'variant-1',
-            quantity: 2,
-            payment_action_type: 'web_cashier',
-            access_token: 'agent-token',
-            org_id: 'org-1'
+            quantity: 2
           })
         : null;
 
@@ -413,14 +360,38 @@ describe('store gateway', () => {
     expect(requestedInit?.headers).toEqual({
       'content-type': 'application/json',
       Authorization: 'Bearer agent-token',
-      'X-ORG-ID': 'org-1'
+      'X-ORG-ID': 'org-1',
+      'X-PAYMENT-CHANNEL': 'alipay'
     });
     expect(requestedArgs).toEqual({
       store_id: 'store-1',
       variant_id: 'variant-1',
-      quantity: 2,
-      payment_action_type: 'web_cashier'
+      quantity: 2
     });
+  });
+
+  it('requires injected order context before calling order tools', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let calledFetch = false;
+
+    const fetchMock = async () => {
+      calledFetch = true;
+      return new Response('{}');
+    };
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.createOrder({
+      store_id: 'store-1',
+      variant_id: 'variant-1'
+    })).rejects.toMatchObject({
+      code: 'CONVERSATION_AGENT_TOKEN_REQUIRED'
+    });
+    expect(calledFetch).toBe(false);
   });
 
   it('returns a not_found error when MCP returns Store not found', async () => {
