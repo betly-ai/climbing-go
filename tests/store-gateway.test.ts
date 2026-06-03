@@ -388,7 +388,7 @@ describe('store gateway', () => {
       variant_id: 'variant-1',
       payment_channel: 'alipay'
     })).rejects.toMatchObject({
-      code: 'CONVERSATION_AGENT_TOKEN_REQUIRED'
+      code: 'CLIMBING_GO_AUTH_REQUIRED'
     });
     expect(calledFetch).toBe(false);
   });
@@ -416,7 +416,7 @@ describe('store gateway', () => {
       variant_id: 'variant-1',
       payment_channel: ''
     })).rejects.toMatchObject({
-      code: 'CONVERSATION_AGENT_PAYMENT_CHANNEL_REQUIRED'
+      code: 'CLIMBING_GO_PAYMENT_CHANNEL_REQUIRED'
     });
     expect(calledFetch).toBe(false);
   });

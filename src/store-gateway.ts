@@ -342,12 +342,12 @@ function buildOrderHeaders(options: StoreGatewayOptions, endpoint: string) {
   const authorization = requireOrderValue(
     options.orderContext?.authorization,
     endpoint,
-    'CONVERSATION_AGENT_TOKEN_REQUIRED',
+    'CLIMBING_GO_AUTH_REQUIRED',
     '缺少 CLIMBING_MCP_AUTHORIZATION'
   );
   if (!authorization.startsWith('Bearer ')) {
     throw new StoreGatewayError({
-      code: 'CONVERSATION_AGENT_TOKEN_INVALID',
+      code: 'CLIMBING_GO_AUTH_INVALID',
       message: 'CLIMBING_MCP_AUTHORIZATION must start with "Bearer "',
       endpoint
     });
@@ -362,7 +362,7 @@ function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs, endpoint: str
   const paymentChannel = requireOrderValue(
     args.payment_channel,
     endpoint,
-    'CONVERSATION_AGENT_PAYMENT_CHANNEL_REQUIRED',
+    'CLIMBING_GO_PAYMENT_CHANNEL_REQUIRED',
     '缺少 payment_channel'
   );
 

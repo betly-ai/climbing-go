@@ -153,10 +153,46 @@ climbing-go-mcp
 - `previewOrder`
 - `createOrder`
 
-订单工具需要通过环境变量提供登录令牌：
+### 订单工具授权
+
+订单工具需要先通过 Betly auth 服务获取 `access_token`。接入方拿到用户授权手机号后，使用约定的 RSA-OAEP 公钥加密手机号，并调用：
+
+```text
+POST <api_base_url>/api/climbing-go/auth
+```
+
+请求头：
+
+```text
+X-ORG-ID: <org_id>
+X-API-KEY: <api_key>
+X-API-SECRET: <api_secret>
+X-SECRET-VERSION: <secret_version>
+X-ENCRYPED-PHONE: <encrypted_mobile>
+```
+
+注意：手机号密文请求头按当前约定拼写为 `X-ENCRYPED-PHONE`。
+
+本地 stdio MCP Server 使用 auth 接口返回的 `access_token` 注入订单工具授权：
 
 ```bash
 export CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN"
+```
+
+如果接入平台直接配置托管的 streamable HTTP MCP，可以使用下面的模板：
+
+```json
+{
+  "mcpServers": {
+    "climbing-go": {
+      "type": "streamablehttp",
+      "url": "https://climbing-mcp.mx5.cn/api/climbing/mcp",
+      "headers": {
+        "Authorization": "Bearer ACCESS_TOKEN"
+      }
+    }
+  }
+}
 ```
 
 支付渠道通过订单工具参数传入，例如：

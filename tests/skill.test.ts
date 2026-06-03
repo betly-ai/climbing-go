@@ -46,8 +46,13 @@ describe('skill package', () => {
     expect(readme).toContain('climbing-go product list --city 上海 --search 单次');
     expect(readme).toContain('previewOrder');
     expect(readme).toContain('createOrder');
+    expect(readme).toContain('POST <api_base_url>/api/climbing-go/auth');
+    expect(readme).toContain('"type": "streamablehttp"');
+    expect(readme).toContain('"climbing-go"');
+    expect(readme).toContain('"Authorization": "Bearer ACCESS_TOKEN"');
     expect(readme).toContain('payment_channel');
     expect(readme).not.toContain('authLogin');
+    expect(readme).not.toContain('"banana-climbing"');
     expect(readme).not.toContain('config set endpoint https://mcp.example.com');
   });
 });
