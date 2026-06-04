@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/betly-ai/climbing-go/compare/v1.4.0...v1.5.0) (2026-06-04)
+
+
+### Features
+
+* **mcp:** sync climbing-go checkout tools ([#10](https://github.com/betly-ai/climbing-go/issues/10)) ([53e5ba2](https://github.com/betly-ai/climbing-go/commit/53e5ba2a28d1ded71f40a1c8bf03ffa56b0339b1))
+
 # [1.4.0](https://github.com/betly-ai/climbing-go/compare/v1.3.0...v1.4.0) (2026-06-03)
 
 
