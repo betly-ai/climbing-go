@@ -6,13 +6,13 @@
   </a>
 </p>
 
-`climbing-go` 是一个由 Banana Climbing（香蕉攀岩）与 Betly 联合推出的攀岩服务查询与支付对接工具。
+`climbing-go` 是一个由 Banana Climbing（香蕉攀岩）与 Betly 联合推出的攀岩服务查询工具。
 
-如果你想快速查看香蕉攀岩有哪些门店、某个门店的详情、可购买产品，或者让 AI Agent 对接香蕉攀岩的支付下单流程，这个工具就是为这些场景准备的。
+如果你想快速查看香蕉攀岩有哪些门店、某个门店的详情、可购买产品，这个工具就是为这些场景准备的。
 
-它把香蕉攀岩的门店查询、产品查询封装成了好用的 CLI 与 MCP 接口，并为已完成授权的接入方提供支付对接 MCP tools，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
+它把香蕉攀岩的门店查询、产品查询封装成了好用的 CLI 与 MCP 接口，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
 
-已支持通过 MCP 查询门店列表与详情、查询可购买产品；支付对接 MCP tools 可在平台凭据齐备时按指定支付渠道完成待支付订单流程。
+已支持通过 MCP 查询门店列表与详情、查询可购买产品。
 
 ## 为什么是香蕉攀岩
 
@@ -62,7 +62,6 @@ climbing-go product list --city 上海 --search 单次 --limit 10
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
 - 查询可购买产品和产品规格
-- 在支付对接场景中，由 AI Agent 通过 MCP 按指定支付渠道完成待支付订单流程
 
 ## 常用命令
 
@@ -74,8 +73,6 @@ climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
 climbing-go product list --city 上海 --search 单次
 climbing-go product list --city 上海 --search 单次 --limit 10
 climbing-go product list --store-id 23b9298b-5dbe-426f-94d2-5905bb41558f --search 单次
-CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN" climbing-go order preview --store-id STORE_ID --variant-id VARIANT_ID --payment-channel alipay
-CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN" climbing-go order create --store-id STORE_ID --variant-id VARIANT_ID --payment-channel alipay
 ```
 
 ## 返回结果怎么看
@@ -150,61 +147,6 @@ climbing-go-mcp
 - `listStores`
 - `getStore`
 - `listProducts`
-- `previewOrder`
-- `createOrder`
-
-### 订单工具授权
-
-订单工具需要先通过 Betly auth 服务获取 `access_token`。接入方拿到用户授权手机号后，使用约定的 RSA-OAEP 公钥加密手机号，并调用：
-
-```text
-POST <api_base_url>/api/climbing-go/auth
-```
-
-请求头：
-
-```text
-X-ORG-ID: <org_id>
-X-API-KEY: <api_key>
-X-API-SECRET: <api_secret>
-X-SECRET-VERSION: <secret_version>
-X-ENCRYPED-PHONE: <encrypted_mobile>
-```
-
-注意：手机号密文请求头按当前约定拼写为 `X-ENCRYPED-PHONE`。
-
-本地 stdio MCP Server 使用 auth 接口返回的 `access_token` 注入订单工具授权：
-
-```bash
-export CLIMBING_MCP_AUTHORIZATION="Bearer ACCESS_TOKEN"
-```
-
-如果接入平台直接配置托管的 streamable HTTP MCP，可以使用下面的模板：
-
-```json
-{
-  "mcpServers": {
-    "climbing-go": {
-      "type": "streamablehttp",
-      "url": "https://climbing-mcp.mx5.cn/api/climbing/mcp",
-      "headers": {
-        "Authorization": "Bearer ACCESS_TOKEN"
-      }
-    }
-  }
-}
-```
-
-支付渠道通过订单工具参数传入，例如：
-
-```json
-{
-  "store_id": "<store_id>",
-  "variant_id": "<variant_id>",
-  "payment_channel": "alipay",
-  "quantity": 1
-}
-```
 
 ## 如果你想自己开发
 
