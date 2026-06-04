@@ -46,28 +46,17 @@ export interface ListProductsArgs {
   limit?: number;
 }
 
-export interface AuthLoginArgs {
-  org_id: string;
-  api_key: string;
-  api_secret: string;
-  secret_version: string;
-  encrypted_phone: string;
-}
-
 export interface PreviewOrderArgs {
   store_id: string;
   variant_id: string;
+  payment_channel: string;
   quantity?: number;
   participant_id?: string;
   user_coupon_id?: string;
   promotion_id?: string;
-  access_token?: string;
-  org_id?: string;
 }
 
-export interface CreateOrderArgs extends PreviewOrderArgs {
-  payment_action_type?: 'web_cashier' | 'mini_program';
-}
+export type CreateOrderArgs = PreviewOrderArgs;
 
 export type JsonObject = Record<string, unknown>;
 
@@ -100,12 +89,6 @@ export interface ClimbingGateway extends StoreGateway {
       products: ProductRecord[];
     };
   }>;
-  authLogin(args: AuthLoginArgs): Promise<{
-    ok: true;
-    tool: 'authLogin';
-    endpoint: string;
-    data: JsonObject;
-  }>;
   previewOrder(args: PreviewOrderArgs): Promise<{
     ok: true;
     tool: 'previewOrder';
@@ -124,6 +107,9 @@ export interface StoreGatewayOptions {
   fetch?: typeof fetch;
   timeoutMs?: number;
   allowInsecure?: boolean;
+  orderContext?: {
+    authorization?: string;
+  };
 }
 
 export class StoreGatewayError extends Error {
@@ -159,7 +145,6 @@ type ClimbingToolName =
   | 'listStores'
   | 'getStore'
   | 'listProducts'
-  | 'authLogin'
   | 'previewOrder'
   | 'createOrder';
 
@@ -335,55 +320,62 @@ function validateProductRecord(product: unknown, endpoint: string) {
   }
 }
 
-function buildLoginHeaders(args: AuthLoginArgs) {
-  return {
-    'X-ORG-ID': args.org_id,
-    'X-API-KEY': args.api_key,
-    'X-API-SECRET': args.api_secret,
-    'X-SECRET-VERSION': args.secret_version,
-    'X-Encryped-PHONE': args.encrypted_phone
-  };
-}
-
-function getOrderAccessToken(args: PreviewOrderArgs, endpoint: string) {
-  const accessToken = args.access_token?.trim();
-  if (!accessToken) {
+function requireOrderValue(
+  value: string | undefined,
+  endpoint: string,
+  code: string,
+  message: string
+) {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
     throw new StoreGatewayError({
-      code: 'CONVERSATION_AGENT_TOKEN_REQUIRED',
-      message: '缺少登录 MCP 返回的 accessToken',
+      code,
+      message,
       endpoint
     });
   }
 
-  return accessToken;
+  return trimmedValue;
 }
 
-function buildOrderHeaders(args: PreviewOrderArgs, endpoint: string) {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${getOrderAccessToken(args, endpoint)}`
-  };
-
-  const orgId = args.org_id?.trim();
-  if (orgId) {
-    headers['X-ORG-ID'] = orgId;
+function buildOrderHeaders(options: StoreGatewayOptions, endpoint: string) {
+  const authorization = requireOrderValue(
+    options.orderContext?.authorization,
+    endpoint,
+    'CLIMBING_GO_AUTH_REQUIRED',
+    '缺少 CLIMBING_MCP_AUTHORIZATION'
+  );
+  if (!authorization.startsWith('Bearer ')) {
+    throw new StoreGatewayError({
+      code: 'CLIMBING_GO_AUTH_INVALID',
+      message: 'CLIMBING_MCP_AUTHORIZATION must start with "Bearer "',
+      endpoint
+    });
   }
 
-  return headers;
+  return {
+    Authorization: authorization
+  };
 }
 
-function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs) {
+function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs, endpoint: string) {
+  const paymentChannel = requireOrderValue(
+    args.payment_channel,
+    endpoint,
+    'CLIMBING_GO_PAYMENT_CHANNEL_REQUIRED',
+    '缺少 payment_channel'
+  );
+
   const payload: Record<string, unknown> = {
     store_id: args.store_id,
-    variant_id: args.variant_id
+    variant_id: args.variant_id,
+    payment_channel: paymentChannel
   };
 
   if (args.quantity !== undefined) payload.quantity = args.quantity;
   if (args.participant_id !== undefined) payload.participant_id = args.participant_id;
   if (args.user_coupon_id !== undefined) payload.user_coupon_id = args.user_coupon_id;
   if (args.promotion_id !== undefined) payload.promotion_id = args.promotion_id;
-  if ('payment_action_type' in args && args.payment_action_type !== undefined) {
-    payload.payment_action_type = args.payment_action_type;
-  }
 
   return payload;
 }
@@ -594,31 +586,12 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       };
     },
 
-    async authLogin(args: AuthLoginArgs) {
-      const response = await callTool({
-        endpoint: normalizedEndpoint,
-        toolName: 'authLogin',
-        args: {},
-        headers: buildLoginHeaders(args),
-        fetchImpl,
-        timeoutMs
-      });
-      const data = parseJsonContent(response, normalizedEndpoint, 'authLogin');
-
-      return {
-        ok: true,
-        tool: 'authLogin',
-        endpoint: normalizedEndpoint,
-        data
-      };
-    },
-
     async previewOrder(args: PreviewOrderArgs) {
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'previewOrder',
-        args: toOrderToolArgs(args),
-        headers: buildOrderHeaders(args, normalizedEndpoint),
+        args: toOrderToolArgs(args, normalizedEndpoint),
+        headers: buildOrderHeaders(options, normalizedEndpoint),
         fetchImpl,
         timeoutMs
       });
@@ -636,8 +609,8 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
       const response = await callTool({
         endpoint: normalizedEndpoint,
         toolName: 'createOrder',
-        args: toOrderToolArgs(args),
-        headers: buildOrderHeaders(args, normalizedEndpoint),
+        args: toOrderToolArgs(args, normalizedEndpoint),
+        headers: buildOrderHeaders(options, normalizedEndpoint),
         fetchImpl,
         timeoutMs
       });

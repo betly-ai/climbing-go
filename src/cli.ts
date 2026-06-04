@@ -7,6 +7,9 @@ import { createStoreGateway, StoreGatewayError, type ClimbingGateway } from './s
 
 export interface GatewayFactoryOptions {
   allowInsecure?: boolean;
+  orderContext?: {
+    authorization?: string;
+  };
 }
 
 export interface RunCliOptions {
@@ -126,14 +129,6 @@ function collectOptionValue(value: string, previous: string[] = []) {
   return [...previous, ...values];
 }
 
-function parsePaymentActionType(value: string) {
-  if (value !== 'web_cashier' && value !== 'mini_program') {
-    throw new Error('payment action type must be web_cashier or mini_program');
-  }
-
-  return value;
-}
-
 export function createProgram(options: RunCliOptions = {}) {
   const env = options.env ?? process.env;
   const gatewayFactory = options.gatewayFactory ?? createStoreGateway;
@@ -153,7 +148,12 @@ export function createProgram(options: RunCliOptions = {}) {
     }
 
     validateEndpoint(resolvedEndpoint, { allowInsecure: input.insecure });
-    return gatewayFactory(resolvedEndpoint, { allowInsecure: input.insecure });
+    return gatewayFactory(resolvedEndpoint, {
+      allowInsecure: input.insecure,
+      orderContext: {
+        authorization: env.CLIMBING_MCP_AUTHORIZATION
+      }
+    });
   }
 
   program
@@ -193,7 +193,6 @@ export function createProgram(options: RunCliOptions = {}) {
 
   const storeCommand = program.command('store').description('Query public climbing stores');
   const productCommand = program.command('product').description('Query purchasable climbing products');
-  const authCommand = program.command('auth').description('Conversation agent auth tools');
   const orderCommand = program.command('order').description('Conversation agent Alipay order tools');
 
   program
@@ -321,55 +320,14 @@ export function createProgram(options: RunCliOptions = {}) {
       }
     );
 
-  authCommand
-    .command('login')
-    .description('Exchange platform-injected conversation-agent headers for a short-lived access token')
-    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
-    .option('--insecure', 'allow using an http: endpoint explicitly')
-    .requiredOption('--org-id <id>', 'organization id, forwarded as X-ORG-ID')
-    .requiredOption('--api-key <key>', 'platform api key, forwarded as X-API-KEY')
-    .requiredOption('--api-secret <secret>', 'platform api secret, forwarded as X-API-SECRET')
-    .requiredOption('--secret-version <version>', 'secret version, forwarded as X-SECRET-VERSION')
-    .requiredOption('--encrypted-phone <value>', 'encrypted phone, forwarded as X-Encryped-PHONE')
-    .action(
-      async ({
-        endpoint,
-        insecure,
-        orgId,
-        apiKey,
-        apiSecret,
-        secretVersion,
-        encryptedPhone
-      }: {
-        endpoint?: string;
-        insecure?: boolean;
-        orgId: string;
-        apiKey: string;
-        apiSecret: string;
-        secretVersion: string;
-        encryptedPhone: string;
-      }) => {
-        const gateway = await createGateway({ endpoint, insecure });
-        const result = await gateway.authLogin({
-          org_id: orgId,
-          api_key: apiKey,
-          api_secret: apiSecret,
-          secret_version: secretVersion,
-          encrypted_phone: encryptedPhone
-        });
-        writeOut(`${JSON.stringify(result, null, 2)}\n`);
-      }
-    );
-
   orderCommand
     .command('preview')
-    .description('Preview an Alipay pending order before user confirmation')
+    .description('Preview a pending order before user confirmation')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .requiredOption('--store-id <id>', 'purchase store id')
     .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
-    .requiredOption('--access-token <token>', 'short-lived access token returned by auth login')
-    .option('--org-id <id>', 'organization id forwarded as X-ORG-ID')
+    .option('--payment-channel <channel>', 'payment channel such as alipay or wechat', 'alipay')
     .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
     .option('--participant-id <id>', 'participant id')
     .option('--user-coupon-id <id>', 'user coupon id')
@@ -380,8 +338,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure,
         storeId,
         variantId,
-        accessToken,
-        orgId,
+        paymentChannel,
         quantity,
         participantId,
         userCouponId,
@@ -391,8 +348,7 @@ export function createProgram(options: RunCliOptions = {}) {
         insecure?: boolean;
         storeId: string;
         variantId: string;
-        accessToken: string;
-        orgId?: string;
+        paymentChannel: string;
         quantity?: number;
         participantId?: string;
         userCouponId?: string;
@@ -402,8 +358,7 @@ export function createProgram(options: RunCliOptions = {}) {
         const result = await gateway.previewOrder({
           store_id: storeId,
           variant_id: variantId,
-          access_token: accessToken,
-          org_id: orgId,
+          payment_channel: paymentChannel,
           quantity,
           participant_id: participantId,
           user_coupon_id: userCouponId,
@@ -415,55 +370,47 @@ export function createProgram(options: RunCliOptions = {}) {
 
   orderCommand
     .command('create')
-    .description('Create an Alipay pending order after explicit user confirmation')
+    .description('Create a pending order after explicit user confirmation')
     .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
     .option('--insecure', 'allow using an http: endpoint explicitly')
     .requiredOption('--store-id <id>', 'purchase store id')
     .requiredOption('--variant-id <id>', 'product variant id from product list variants[].id')
-    .requiredOption('--access-token <token>', 'short-lived access token returned by auth login')
-    .option('--org-id <id>', 'organization id forwarded as X-ORG-ID')
+    .option('--payment-channel <channel>', 'payment channel such as alipay or wechat', 'alipay')
     .option('--quantity <number>', 'purchase quantity (positive integer)', parsePositiveInteger)
     .option('--participant-id <id>', 'participant id')
     .option('--user-coupon-id <id>', 'user coupon id')
     .option('--promotion-id <id>', 'promotion id')
-    .option('--payment-action-type <type>', 'web_cashier or mini_program', parsePaymentActionType)
     .action(
       async ({
         endpoint,
         insecure,
         storeId,
         variantId,
-        accessToken,
-        orgId,
+        paymentChannel,
         quantity,
         participantId,
         userCouponId,
-        promotionId,
-        paymentActionType
+        promotionId
       }: {
         endpoint?: string;
         insecure?: boolean;
         storeId: string;
         variantId: string;
-        accessToken: string;
-        orgId?: string;
+        paymentChannel: string;
         quantity?: number;
         participantId?: string;
         userCouponId?: string;
         promotionId?: string;
-        paymentActionType?: 'web_cashier' | 'mini_program';
       }) => {
         const gateway = await createGateway({ endpoint, insecure });
         const result = await gateway.createOrder({
           store_id: storeId,
           variant_id: variantId,
-          access_token: accessToken,
-          org_id: orgId,
+          payment_channel: paymentChannel,
           quantity,
           participant_id: participantId,
           user_coupon_id: userCouponId,
-          promotion_id: promotionId,
-          payment_action_type: paymentActionType
+          promotion_id: promotionId
         });
         writeOut(`${JSON.stringify(result, null, 2)}\n`);
       }
