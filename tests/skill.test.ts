@@ -18,11 +18,13 @@ describe('skill package', () => {
     expect(skill).toContain('找岩馆');
     expect(skill).toContain('哪里攀岩');
     expect(skill).toContain('几点开门');
+    expect(skill).toContain('什么时候人多');
     expect(skill).toContain('find a climbing gym');
     expect(skill).toContain('what time does it open');
     expect(skill).toContain('先用 `store list` 缩小范围，再用 `store get` 看详情');
     expect(skill).toContain('climbing-go store list');
     expect(skill).toContain('climbing-go store get');
+    expect(skill).toContain('climbing-go store popular-times');
     expect(skill).not.toContain('climbing-go config set endpoint <url>');
     expect(skill).not.toContain('CLIMBING_MCP_ENDPOINT');
   });
@@ -41,9 +43,11 @@ describe('skill package', () => {
     expect(readme).toContain('## Skill');
     expect(readme).toContain('skills/betly-store/SKILL.md');
     expect(readme).toContain('climbing-go store list --city 上海');
-    expect(readme).toContain('已支持通过 MCP 查询门店列表与详情、查询可购买产品');
+    expect(readme).toContain('climbing-go store popular-times');
+    expect(readme).toContain('已支持通过 MCP 查询门店列表与详情、查询门店繁忙程度、查询可购买产品');
     expect(readme).toContain('启动后会通过 stdio 暴露以下 tools');
     expect(readme).toContain('climbing-go product list --city 上海 --search 单次');
+    expect(readme).toContain('getStorePopularTimes');
     expect(readme).toContain('"climbing-go"');
     expect(readme).not.toContain('previewOrder');
     expect(readme).not.toContain('createOrder');

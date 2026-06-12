@@ -14,6 +14,12 @@ export interface ListStoresArgs {
   offset?: number;
 }
 
+export interface PopularTimesRecord {
+  day_of_week: number;
+  hour: number;
+  value: number;
+}
+
 export interface ProductVariantStoreRecord {
   id: string;
   name: string;
@@ -76,6 +82,14 @@ export interface StoreGateway {
     endpoint: string;
     data: {
       store: StoreRecord;
+    };
+  }>;
+  getStorePopularTimes(storeId: string): Promise<{
+    ok: true;
+    tool: 'getStorePopularTimes';
+    endpoint: string;
+    data: {
+      popular_times: PopularTimesRecord[];
     };
   }>;
 }
@@ -151,6 +165,7 @@ type ClimbingToolName =
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_STORE_LIST_LIMIT = 100;
 const MAX_ERROR_BODY_LENGTH = 512;
+const MCP_PATH_SUFFIX = '/api/climbing/mcp';
 
 function normalizeEndpoint(endpoint: string, allowInsecure = false) {
   const url = validateEndpoint(endpoint, { allowInsecure });
@@ -167,12 +182,33 @@ function normalizeEndpoint(endpoint: string, allowInsecure = false) {
 
   const normalizedPath = url.pathname.replace(/\/+$/, '');
 
-  if (normalizedPath.endsWith('/api/climbing/mcp')) {
+  if (normalizedPath.endsWith(MCP_PATH_SUFFIX)) {
     url.pathname = normalizedPath;
     return url.toString();
   }
 
-  url.pathname = `${normalizedPath}/api/climbing/mcp`.replace(/\/{2,}/g, '/');
+  url.pathname = `${normalizedPath}${MCP_PATH_SUFFIX}`.replace(/\/{2,}/g, '/');
+  return url.toString();
+}
+
+function normalizeApiBaseEndpoint(endpoint: string, allowInsecure = false) {
+  const url = validateEndpoint(endpoint, { allowInsecure });
+
+  if (url.protocol === 'http:') {
+    process.stderr.write(
+      'Warning: endpoint uses insecure http: scheme — consider using https: instead\n'
+    );
+  }
+
+  url.username = '';
+  url.password = '';
+
+  const normalizedPath = url.pathname.replace(/\/+$/, '');
+  const basePath = normalizedPath.endsWith(MCP_PATH_SUFFIX)
+    ? normalizedPath.slice(0, -MCP_PATH_SUFFIX.length)
+    : normalizedPath;
+
+  url.pathname = basePath || '/';
   return url.toString();
 }
 
@@ -380,6 +416,29 @@ function toOrderToolArgs(args: PreviewOrderArgs | CreateOrderArgs, endpoint: str
   return payload;
 }
 
+function truncateErrorBody(body: string) {
+  return body.length > MAX_ERROR_BODY_LENGTH
+    ? `${body.slice(0, MAX_ERROR_BODY_LENGTH)}… (truncated)`
+    : body;
+}
+
+function parsePopularTimesEntry(entry: unknown, endpoint: string) {
+  if (
+    typeof entry !== 'object' ||
+    entry === null ||
+    typeof (entry as PopularTimesRecord).day_of_week !== 'number' ||
+    typeof (entry as PopularTimesRecord).hour !== 'number' ||
+    typeof (entry as PopularTimesRecord).value !== 'number'
+  ) {
+    throw new StoreGatewayError({
+      code: 'invalid_response',
+      message:
+        'getStorePopularTimes contains an entry missing required day_of_week, hour, or value fields',
+      endpoint
+    });
+  }
+}
+
 async function callTool(
   input: {
     endpoint: string;
@@ -438,8 +497,138 @@ async function callTool(
   }
 }
 
+async function callJsonRoute(
+  input: {
+    endpoint: string;
+    fetchImpl: typeof fetch;
+    timeoutMs: number;
+  }
+) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), input.timeoutMs);
+
+  try {
+    const response = await input.fetchImpl(input.endpoint, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json'
+      },
+      signal: controller.signal
+    });
+    const rawText = await response.text();
+    const safeEndpoint = sanitizeEndpoint(input.endpoint);
+    let parsed: unknown;
+
+    if (rawText) {
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        if (response.status === 404) {
+          throw new StoreGatewayError({
+            code: 'endpoint_not_found',
+            message: `HTTP endpoint not found: ${safeEndpoint}`,
+            endpoint: safeEndpoint,
+            status: 404
+          });
+        }
+
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'HTTP service returned invalid JSON',
+          endpoint: safeEndpoint,
+          status: response.status
+        });
+      }
+    }
+
+    const record = typeof parsed === 'object' && parsed !== null ? parsed as JsonObject : null;
+
+    if (response.status === 404) {
+      if (record?.success === false && typeof record.message === 'string') {
+        throw new StoreGatewayError({
+          code: typeof record.code === 'string' ? record.code : 'not_found',
+          message: record.message,
+          endpoint: safeEndpoint,
+          status: 404
+        });
+      }
+
+      throw new StoreGatewayError({
+        code: 'endpoint_not_found',
+        message: `HTTP endpoint not found: ${safeEndpoint}`,
+        endpoint: safeEndpoint,
+        status: 404
+      });
+    }
+
+    if (!response.ok) {
+      if (record?.success === false && typeof record.message === 'string') {
+        throw new StoreGatewayError({
+          code: typeof record.code === 'string' ? record.code : 'service_error',
+          message: record.message,
+          endpoint: safeEndpoint,
+          status: response.status
+        });
+      }
+
+      throw new StoreGatewayError({
+        code: 'service_error',
+        message: `HTTP service error (${response.status}): ${truncateErrorBody(rawText || response.statusText)}`,
+        endpoint: safeEndpoint,
+        status: response.status
+      });
+    }
+
+    if (!record) {
+      throw new StoreGatewayError({
+        code: 'invalid_response',
+        message: 'HTTP service returned invalid JSON',
+        endpoint: safeEndpoint,
+        status: response.status
+      });
+    }
+
+    if (record.success === false) {
+      throw new StoreGatewayError({
+        code: typeof record.code === 'string' ? record.code : 'service_error',
+        message:
+          typeof record.message === 'string'
+            ? record.message
+            : 'HTTP service returned an unsuccessful response',
+        endpoint: safeEndpoint,
+        status: response.status
+      });
+    }
+
+    return record;
+  } catch (error) {
+    if (error instanceof StoreGatewayError) {
+      throw error;
+    }
+
+    const safeEndpoint = sanitizeEndpoint(input.endpoint);
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new StoreGatewayError({
+        code: 'timeout',
+        message: `Request timed out after ${input.timeoutMs}ms`,
+        endpoint: safeEndpoint
+      });
+    }
+
+    throw new StoreGatewayError({
+      code: 'network_error',
+      message: error instanceof Error ? error.message : 'Network error',
+      endpoint: safeEndpoint
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function createStoreGateway(endpoint: string, options: StoreGatewayOptions = {}): ClimbingGateway {
   const normalizedEndpoint = normalizeEndpoint(endpoint, options.allowInsecure);
+  const normalizedApiBaseEndpoint = normalizeApiBaseEndpoint(endpoint, options.allowInsecure);
   const fetchImpl = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -548,6 +737,42 @@ export function createStoreGateway(endpoint: string, options: StoreGatewayOption
         endpoint: normalizedEndpoint,
         data: {
           store
+        }
+      };
+    },
+
+    async getStorePopularTimes(storeId: string) {
+      const routeEndpoint = new URL(normalizedApiBaseEndpoint);
+      const basePath = routeEndpoint.pathname.replace(/\/+$/, '');
+      routeEndpoint.pathname = `${basePath}/api/stores/${encodeURIComponent(storeId)}/popular-times`
+        .replace(/\/{2,}/g, '/');
+
+      const record = await callJsonRoute({
+        endpoint: routeEndpoint.toString(),
+        fetchImpl,
+        timeoutMs
+      });
+
+      if (!('data' in record) || !Array.isArray(record.data)) {
+        throw new StoreGatewayError({
+          code: 'invalid_response',
+          message: 'getStorePopularTimes response field "data" must be an array',
+          endpoint: routeEndpoint.toString()
+        });
+      }
+
+      const popularTimes = record.data as PopularTimesRecord[];
+
+      for (const entry of popularTimes) {
+        parsePopularTimesEntry(entry, routeEndpoint.toString());
+      }
+
+      return {
+        ok: true,
+        tool: 'getStorePopularTimes',
+        endpoint: routeEndpoint.toString(),
+        data: {
+          popular_times: popularTimes
         }
       };
     },

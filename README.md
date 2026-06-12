@@ -12,7 +12,7 @@
 
 它把香蕉攀岩的门店查询、产品查询封装成了好用的 CLI 与 MCP 接口，方便开发者、合作伙伴、运营同学和 AI Agent 直接接入。
 
-已支持通过 MCP 查询门店列表与详情、查询可购买产品。
+已支持通过 MCP 查询门店列表与详情、查询门店繁忙程度、查询可购买产品。
 
 ## 为什么是香蕉攀岩
 
@@ -49,6 +49,8 @@ climbing-go store list
 climbing-go store list --city 上海 --search 香蕉
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go store popular-times 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go store popular-times --city 上海 --search 香蕉
 climbing-go product list --city 上海 --search 单次
 climbing-go product list --city 上海 --search 单次 --limit 10
 ```
@@ -61,6 +63,7 @@ climbing-go product list --city 上海 --search 单次 --limit 10
 - 按城市筛选香蕉攀岩门店
 - 按关键词搜索香蕉攀岩门店
 - 查看某个香蕉攀岩门店的详细信息
+- 查看某个门店按星期和小时归一化后的繁忙程度
 - 查询可购买产品和产品规格
 
 ## 常用命令
@@ -70,6 +73,8 @@ climbing-go store list
 climbing-go store list --city 上海
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go store popular-times 23b9298b-5dbe-426f-94d2-5905bb41558f
+climbing-go store popular-times --city 上海 --search 香蕉
 climbing-go product list --city 上海 --search 单次
 climbing-go product list --city 上海 --search 单次 --limit 10
 climbing-go product list --store-id 23b9298b-5dbe-426f-94d2-5905bb41558f --search 单次
@@ -81,6 +86,8 @@ climbing-go product list --store-id 23b9298b-5dbe-426f-94d2-5905bb41558f --searc
 
 - `store list` 重点看 `data.stores` 和 `data.count`
 - `store get` 重点看 `data.store`
+- `store popular-times` 统一看 `data.stores[]` 和 `data.count`
+- `data.stores[]` 中每项直接包含 `id`、`name`、`city` 和 `popular_times`
 - `product list` 重点看 `data.products[].variants[].id`
 - 响应里会带上 `ok`、`tool`、`endpoint` 和 `data`
 
@@ -96,13 +103,13 @@ npx skills add betly-ai/climbing-go -y -g
 
 当前提供的 skill：
 
-- `betly-store`：给 AI Agent 用的公开门店查询 skill，可以查门店列表和门店详情
+- `betly-store`：给 AI Agent 用的公开门店查询 skill，可以查门店列表、门店详情和门店繁忙程度
 
 skill 文件位置：
 
 `skills/betly-store/SKILL.md`
 
-装好以后，Agent 会优先通过 `climbing-go` 命令查门店，而不是直接绕过 CLI 去请求底层 MCP。
+装好以后，Agent 会优先通过 `climbing-go` 命令查门店与繁忙程度，而不是直接绕过这个仓库去请求底层接口。
 
 ## 作为 MCP Server 使用
 
@@ -146,7 +153,10 @@ climbing-go-mcp
 
 - `listStores`
 - `getStore`
+- `getStorePopularTimes`
 - `listProducts`
+
+其中 `getStorePopularTimes` 无论直接传 `id`，还是传 `city` / `search` 批量查询，都会统一返回 `stores[]` 结构。
 
 ## 如果你想自己开发
 

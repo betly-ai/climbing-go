@@ -31,6 +31,7 @@ describe('CLI skeleton', () => {
 
     expect(helpText).toContain('list');
     expect(helpText).toContain('get');
+    expect(helpText).toContain('popular-times');
   });
 
   it('shows product and order subcommands in help output', async () => {
@@ -430,5 +431,111 @@ describe('CLI skeleton', () => {
     expect(result.stderr).toContain('"ok": false');
     expect(result.stderr).toContain('"code": "not_found"');
     expect(result.stderr).toContain('"message": "Store not found"');
+  });
+
+  it('runs store popular-times with resolved endpoint output', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'popular-times', 'store-1'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores() {
+                throw new Error('unused');
+              },
+              async getStore() {
+                return {
+                  ok: true,
+                  tool: 'getStore',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    store: { id: 'store-1', name: '香蕉攀岩上海旗舰馆', city: '上海' }
+                  }
+                };
+              },
+              async getStorePopularTimes() {
+                return {
+                  ok: true,
+                  tool: 'getStorePopularTimes',
+                  endpoint: 'https://env.example.com/api/stores/store-1/popular-times',
+                  data: {
+                    popular_times: [
+                      { day_of_week: 1, hour: 19, value: 88 },
+                      { day_of_week: 6, hour: 14, value: 100 }
+                    ]
+                  }
+                };
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('"tool": "getStorePopularTimes"');
+    expect(result.stdout).toContain('"stores"');
+    expect(result.stdout).toContain('"count": 1');
+    expect(result.stdout).not.toContain('"store"');
+    expect(result.stdout).toContain('香蕉攀岩上海旗舰馆');
+    expect(result.stdout).toContain('"day_of_week": 1');
+    expect(result.stdout).toContain('"value": 100');
+  });
+
+  it('returns store popular-times for all stores matched by city and search', async () => {
+    const cliModule = await importCliModule();
+    const runCli = cliModule?.runCli;
+    let receivedStoreArgs: unknown;
+    const receivedPopularTimesStoreIds: string[] = [];
+
+    const result =
+      typeof runCli === 'function'
+        ? await runCli(['store', 'popular-times', '--city', '上海', '--search', '旗舰'], {
+            env: { CLIMBING_MCP_ENDPOINT: 'https://env.example.com' },
+            gatewayFactory: () => ({
+              async listStores(args) {
+                receivedStoreArgs = args;
+                return {
+                  ok: true,
+                  tool: 'listStores',
+                  endpoint: 'https://env.example.com/api/climbing/mcp',
+                  data: {
+                    stores: [
+                      { id: 'store-1', name: '香蕉攀岩上海旗舰馆', city: '上海' },
+                      { id: 'store-2', name: '香蕉攀岩上海静安旗舰馆', city: '上海' }
+                    ],
+                    count: 2
+                  }
+                };
+              },
+              async getStore() {
+                throw new Error('unused');
+              },
+              async getStorePopularTimes(storeId) {
+                receivedPopularTimesStoreIds.push(storeId);
+                return {
+                  ok: true,
+                  tool: 'getStorePopularTimes',
+                  endpoint: `https://env.example.com/api/stores/${storeId}/popular-times`,
+                  data: {
+                    popular_times: [{ day_of_week: 1, hour: 19, value: storeId === 'store-1' ? 88 : 92 }]
+                  }
+                };
+              }
+            })
+          })
+        : { exitCode: 1, stdout: '', stderr: 'missing runCli' };
+
+    expect(result.exitCode).toBe(0);
+    expect(receivedStoreArgs).toEqual({
+      city: '上海',
+      search: '旗舰',
+      limit: 100
+    });
+    expect(receivedPopularTimesStoreIds).toEqual(['store-1', 'store-2']);
+    expect(result.stdout).toContain('"count": 2');
+    expect(result.stdout).not.toContain('"store"');
+    expect(result.stdout).toContain('香蕉攀岩上海旗舰馆');
+    expect(result.stdout).toContain('香蕉攀岩上海静安旗舰馆');
   });
 });
