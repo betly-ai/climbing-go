@@ -217,6 +217,52 @@ describe('store gateway', () => {
     });
   });
 
+  it('fetches store popular times from the stores API route', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+    let requestedUrl = '';
+    let requestedInit: RequestInit | undefined;
+
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(input);
+      requestedInit = init;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: [
+            { day_of_week: 1, hour: 19, value: 88 },
+            { day_of_week: 6, hour: 14, value: 100 }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+    };
+
+    const result =
+      typeof createStoreGateway === 'function'
+        ? await createStoreGateway('https://example.com/base/', { fetch: fetchMock }).getStorePopularTimes('store-1')
+        : null;
+
+    expect(requestedUrl).toBe('https://example.com/base/api/stores/store-1/popular-times');
+    expect(requestedInit?.method).toBe('GET');
+    expect(requestedInit?.headers).toEqual({ accept: 'application/json' });
+    expect(result).toEqual({
+      ok: true,
+      tool: 'getStorePopularTimes',
+      endpoint: 'https://example.com/base/api/stores/store-1/popular-times',
+      data: {
+        popular_times: [
+          { day_of_week: 1, hour: 19, value: 88 },
+          { day_of_week: 6, hour: 14, value: 100 }
+        ]
+      }
+    });
+  });
+
   it('parses listProducts MCP content into structured product data', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
@@ -451,6 +497,33 @@ describe('store gateway', () => {
     });
   });
 
+  it('maps popular times 404 responses with JSON payload to not_found', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          message: '门店不存在'
+        }),
+        {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.getStorePopularTimes('missing-store')).rejects.toMatchObject({
+      code: 'not_found',
+      message: '门店不存在'
+    });
+  });
+
   it('maps 404 responses to a clear endpoint error', async () => {
     const storeGatewayModule = await importStoreGatewayModule();
     const createStoreGateway = storeGatewayModule?.createStoreGateway;
@@ -604,6 +677,33 @@ describe('store gateway', () => {
     await expect(gateway?.getStore('store-1')).rejects.toMatchObject({
       code: 'invalid_response',
       message: expect.stringContaining('missing required id or name')
+    });
+  });
+
+  it('validates getStorePopularTimes response entries', async () => {
+    const storeGatewayModule = await importStoreGatewayModule();
+    const createStoreGateway = storeGatewayModule?.createStoreGateway;
+
+    const fetchMock = async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: [{ day_of_week: 1, value: 88 }]
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      );
+
+    const gateway =
+      typeof createStoreGateway === 'function'
+        ? createStoreGateway('https://example.com', { fetch: fetchMock })
+        : null;
+
+    await expect(gateway?.getStorePopularTimes('store-1')).rejects.toMatchObject({
+      code: 'invalid_response',
+      message: expect.stringContaining('day_of_week, hour, or value')
     });
   });
 

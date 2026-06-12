@@ -11,6 +11,7 @@ import {
   type JsonObject,
   type ListProductsArgs,
   type ListStoresArgs,
+  type PopularTimesRecord,
   type PreviewOrderArgs,
   type ProductRecord,
   type StoreRecord
@@ -25,6 +26,9 @@ export interface StoreService {
     count: number;
   }>;
   getStore(storeId: string): Promise<StoreRecord>;
+  getStorePopularTimes(storeId: string): Promise<{
+    popular_times: PopularTimesRecord[];
+  }>;
   listProducts(args: ListProductsArgs): Promise<{
     products: ProductRecord[];
   }>;
@@ -34,6 +38,39 @@ export interface StoreService {
 
 export interface CreateMcpServerOptions {
   service?: StoreService;
+}
+
+async function resolveStoreIdForPopularTimes(
+  service: StoreService,
+  input: {
+    id?: string;
+    city?: string;
+    search?: string;
+  }
+) {
+  if (input.id?.trim()) {
+    return {
+      id: input.id.trim(),
+      stores: null
+    };
+  }
+
+  if (!input.city?.trim() && !input.search?.trim()) {
+    const error = new Error('Missing store id. Pass id or use city/search to resolve stores.');
+    Object.assign(error, { code: 'store_lookup_required' });
+    throw error;
+  }
+
+  const storesResult = await service.listStores({
+    city: input.city?.trim() || undefined,
+    search: input.search?.trim() || undefined,
+    limit: 100
+  });
+
+  return {
+    id: null,
+    stores: storesResult.stores
+  };
 }
 
 async function resolveGateway(env: EnvMap): Promise<ClimbingGateway> {
@@ -62,6 +99,11 @@ async function createStoreService(env: EnvMap): Promise<StoreService> {
     async getStore(storeId) {
       const result = await gateway.getStore(storeId);
       return result.data.store;
+    },
+
+    async getStorePopularTimes(storeId) {
+      const result = await gateway.getStorePopularTimes(storeId);
+      return result.data;
     },
 
     async listProducts(args) {
@@ -129,6 +171,41 @@ export async function createMcpServer(
       }
     },
     async ({ id }) => createTextResult(await service.getStore(id))
+  );
+
+  server.registerTool(
+    'getStorePopularTimes',
+    {
+      description:
+        'Get normalized store busy levels by weekday and hour for one or more public Banana Climbing stores.',
+      inputSchema: {
+        id: z.string().min(1).optional().describe('Store id.'),
+        city: z.string().optional().describe('Filter stores by city name before resolving stores.'),
+        search: z.string().optional().describe('Filter stores by keyword in the store name before resolving stores.')
+      }
+    },
+    async (args) => {
+      const resolved = await resolveStoreIdForPopularTimes(service, args);
+
+      const result = resolved.id
+        ? await Promise.all([
+            (async () => ({
+              ...(await service.getStore(resolved.id as string)),
+              popular_times: (await service.getStorePopularTimes(resolved.id as string)).popular_times
+            }))()
+          ])
+        : await Promise.all(
+            (resolved.stores ?? []).map(async (store) => ({
+              ...store,
+              popular_times: (await service.getStorePopularTimes(store.id)).popular_times
+            }))
+          );
+
+      return createTextResult({
+        stores: result,
+        count: result.length
+      });
+    }
   );
 
   server.registerTool(

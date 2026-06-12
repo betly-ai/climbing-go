@@ -1,24 +1,26 @@
 ---
 name: betly-store
-description: Use when a user asks where to climb, find a climbing gym or bouldering gym, search Betly public stores by city or keyword, or check store details such as address and opening hours through the climbing-go CLI in a terminal session.
+description: Use when a user asks where to climb, find a climbing gym or bouldering gym, search Betly public stores by city or keyword, check store details such as address and opening hours, or query normalized store busy levels through climbing-go commands in a terminal session.
 ---
 
 # Store Query
 
-Use this skill only for Betly 一期公开门店能力：门店列表查询和门店详情查询。
+Use this skill only for Betly 一期公开门店能力：门店列表查询、门店详情查询、门店繁忙程度查询。
 
 ## MUST DO
 
 - 开始前先确认 `climbing-go` 已安装并且当前终端可以直接执行
 - 所有查询都通过 `climbing-go` 命令完成，不要绕过 CLI 直接请求 MCP
 - 只使用命令返回里的真实字段和门店 ID，不要猜测或编造数据
-- 用户说自然语言时，先把问题归一成“查门店列表”或“查门店详情”，再选命令
+- 用户说自然语言时，先把问题归一成“查门店列表”“查门店详情”或“查门店繁忙程度”，再选命令
 - 如果用户问“几点开门”“营业到几点”“地址在哪”“电话多少”，先用 `store list` 缩小范围，再用 `store get` 看详情
+- 如果用户问“什么时候人多”“几点最忙”“客流怎么样”，先确定门店，再用 `store popular-times` 查询
 
 ## Scope
 
 - 支持 `store list`
 - 支持 `store get`
+- 支持 `store popular-times`
 - 不支持课程、会员、订单、私有门店或其他未开放数据
 
 ## Typical User Phrases
@@ -31,12 +33,15 @@ Use this skill only for Betly 一期公开门店能力：门店列表查询和�
 - `北京攀岩馆`
 - `香蕉攀岩在哪里`
 - `深圳香蕉几点开门`
+- `这家店什么时候人最多`
+- `周末下午忙不忙`
 - `这家店地址是什么`
 - `营业时间是什么`
 - `find a climbing gym`
 - `where can I climb in Shanghai`
 - `bouldering gym in Shenzhen`
 - `what time does it open`
+- `when is this gym busiest`
 - `what are the opening hours`
 
 ## Setup
@@ -66,6 +71,8 @@ climbing-go store list
 climbing-go store list --city 上海 --search 香蕉
 climbing-go store list --city 上海 --search 香蕉 --limit 10
 climbing-go store get store_123
+climbing-go store popular-times store_123
+climbing-go store popular-times --city 上海 --search 香蕉
 ```
 
 `store list` 默认会请求最多 100 条公开门店，足够覆盖当前全部公开门店；显式传入 `--limit`/`--offset` 时才走分页。
@@ -76,7 +83,8 @@ climbing-go store get store_123
 2. 用户提到了城市，比如“深圳”“上海”“北京哪里攀岩”，带上 `--city`
 3. 用户提到了店名或关键词，比如“香蕉攀岩”，在列表查询时带上 `--search`
 4. 用户在问地址、电话、营业时间、几点开门这类详情，先找到候选门店，再用 `store get <storeId>`
-5. 如果列表结果有多个可能命中，返回真实候选项让用户确认，不要自行猜测具体门店
+5. 用户在问繁忙程度、热门时段、什么时候人多时，可以直接用 `climbing-go store popular-times --city <city> --search <keyword>`；如果已经有准确 `storeId`，也可以直接传 `<storeId>`
+6. 如果用户是在问单门店详情，例如地址、营业时间这类问题，而列表结果有多个可能命中，返回真实候选项让用户确认，不要自行猜测具体门店
 
 ## Query Examples
 
@@ -84,17 +92,24 @@ climbing-go store get store_123
 - `深圳哪里攀岩` -> `climbing-go store list --city 深圳`
 - `上海香蕉攀岩` -> `climbing-go store list --city 上海 --search 香蕉 --limit 10`
 - `深圳香蕉几点开门` -> 先 `climbing-go store list --city 深圳 --search 香蕉 --limit 10`，再 `climbing-go store get <storeId>`
+- `上海香蕉什么时候最忙` -> `climbing-go store popular-times --city 上海 --search 香蕉`
 - `find a climbing gym in Beijing` -> `climbing-go store list --city 北京`
 - `what time does Banana climb open in Shenzhen` -> 先 `climbing-go store list --city 深圳 --search 香蕉 --limit 10`，再 `climbing-go store get <storeId>`
+- `when is this gym busiest` -> `climbing-go store popular-times --city <city> --search <keyword>` 或 `climbing-go store popular-times <storeId>`
 
 ## Output
 
 - `store list` 返回 JSON，重点看 `data.stores` 和 `data.count`
 - `store get` 返回 JSON，重点看 `data.store`
+- `store popular-times` 返回 JSON，统一重点看 `data.stores[]` 和 `data.count`
+- `data.stores[]` 中每项直接包含 `id`、`name`、`city` 和 `popular_times`
 - 成功响应包含 `ok`、`tool`、`endpoint` 和 `data`
 - 回答“几点开门”这类问题时，只引用 `data.store` 里真实存在的营业时间字段；如果返回里没有，就明确说当前公开数据未提供
+- `popular_times[]` 中每条包含 `day_of_week`、`hour`、`value`
+- `value` 是 0-100 的归一化繁忙程度，不是原始签到人数
 
 ## Failure Handling
 
 - 返回 `not_found` 时，说明门店 ID 不存在或不在公开范围
+- 查询繁忙程度前如果还没有准确门店 ID，不要跳过门店确认步骤
 - 返回 `endpoint_not_found`、`timeout`、`network_error` 时，直接报告真实错误，不要猜测门店数据

@@ -129,6 +129,41 @@ function collectOptionValue(value: string, previous: string[] = []) {
   return [...previous, ...values];
 }
 
+async function resolveStoreIdForLookup(
+  gateway: ClimbingGateway,
+  input: {
+    storeId?: string;
+    city?: string;
+    search?: string;
+  }
+) {
+  if (input.storeId?.trim()) {
+    return {
+      storeId: input.storeId.trim(),
+      stores: null,
+      endpoint: null
+    };
+  }
+
+  if (!input.city?.trim() && !input.search?.trim()) {
+    const error = new Error('Missing store id. Pass <storeId> or use --city/--search to resolve stores.');
+    Object.assign(error, { code: 'store_lookup_required' });
+    throw error;
+  }
+
+  const storesResult = await gateway.listStores({
+    city: input.city?.trim() || undefined,
+    search: input.search?.trim() || undefined,
+    limit: 100
+  });
+
+  return {
+    storeId: null,
+    stores: storesResult.data.stores,
+    endpoint: storesResult.endpoint
+  };
+}
+
 export function createProgram(options: RunCliOptions = {}) {
   const env = options.env ?? process.env;
   const gatewayFactory = options.gatewayFactory ?? createStoreGateway;
@@ -243,6 +278,74 @@ export function createProgram(options: RunCliOptions = {}) {
       const gateway = await createGateway({ endpoint, insecure });
       const result = await gateway.getStore(storeId);
       writeOut(`${JSON.stringify(result, null, 2)}\n`);
+    });
+
+  storeCommand
+    .command('popular-times [storeId]')
+    .description('Get normalized busy levels for one or more public climbing stores')
+    .option('-e, --endpoint <url>', 'override climbing MCP endpoint')
+    .option('--insecure', 'allow using an http: endpoint explicitly')
+    .option('--city <city>', 'filter stores by city before resolving stores')
+    .option('--search <keyword>', 'search stores by name keyword before resolving stores')
+    .action(async (
+      storeId: string | undefined,
+      {
+        endpoint,
+        insecure,
+        city,
+        search
+      }: {
+        endpoint?: string;
+        insecure?: boolean;
+        city?: string;
+        search?: string;
+      }
+    ) => {
+      const gateway = await createGateway({ endpoint, insecure });
+      const resolved = await resolveStoreIdForLookup(gateway, {
+        storeId,
+        city,
+        search
+      });
+
+      let responseEndpoint = resolved.endpoint ?? null;
+      const popularTimesStores = resolved.storeId
+        ? await Promise.all([
+            (async () => {
+              const [storeResult, popularTimesResult] = await Promise.all([
+                gateway.getStore(resolved.storeId),
+                gateway.getStorePopularTimes(resolved.storeId)
+              ]);
+              responseEndpoint = popularTimesResult.endpoint;
+              return {
+                ...storeResult.data.store,
+                popular_times: popularTimesResult.data.popular_times
+              };
+            })()
+          ])
+        : await Promise.all(
+            (resolved.stores ?? []).map(async (store) => {
+              const result = await gateway.getStorePopularTimes(store.id);
+              return {
+                ...store,
+                popular_times: result.data.popular_times
+              };
+            })
+          );
+
+      writeOut(`${JSON.stringify(
+        {
+          ok: true,
+          tool: 'getStorePopularTimes',
+          endpoint: responseEndpoint,
+          data: {
+            stores: popularTimesStores,
+            count: popularTimesStores.length
+          }
+        },
+        null,
+        2
+      )}\n`);
     });
 
   productCommand
